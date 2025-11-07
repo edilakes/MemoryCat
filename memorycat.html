@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemoryCat</title>
+
+    <!-- 
+    EXPLICACIÓN COMPLETA DE LA LÓGICA DE MEMORYCAT
+    
+    Esta aplicación es una "Single Page Application" (SPA) contenida en un único archivo HTML,
+    sin dependencias externas de servidor, que utiliza Tailwind CSS para los estilos 
+    y JavaScript puro para toda la lógica y la persistencia de datos.
+
+    --- 1. ESTRUCTURA DE DATOS (Variables Globales JS) ---
+    
+    La aplicación se basa en dos estructuras de datos principales:
+    
+    1.  `players` (Objeto): Un objeto donde cada clave es un ID de jugador (ej: 'pepe') y el 
+        valor es otro objeto con sus propiedades (id, name, course).
+        Ej: `const players = { 'pepe': { id: 'pepe', name: 'Pepe Pérez', ... } }`
+        
+    2.  `questions` (Array): Un array de objetos. Cada objeto representa una pregunta y 
+        contiene sus propiedades (id, title, enunciado, respuesta, puntos).
+        -   Los 'puntos' de cada pregunta se calculan dinámicamente al inicio con la 
+            función `countWords(respuesta)`, que cuenta las palabras de la respuesta.
+        -   La lista se genera para 23 preguntas (a-w), usando datos de relleno 
+            (placeholders) si no están definidos en `initialQuestionsData`.
+            
+    --- 2. ESTRATEGIA DE RENDERIZADO (Construcción de la UI) ---
+    
+    El HTML estático (en el <body>) es solo un esqueleto. Contiene un <table> vacío 
+    (con `<thead><tr>` y `<tbody>`) y los <div> de los modales (jugador y pregunta), 
+    que están ocultos (`class="hidden"`).
+
+    La tabla se construye dinámicamente con JavaScript al cargar la página (`window.load`):
+    
+    1.  `renderHeader()`: Itera sobre el array `questions`. Por cada pregunta, crea un `<th>`
+        que contiene un `<button>` con el `title` de la pregunta. Se añade un atributo 
+        `data-question-id` a cada botón para identificarlo.
+        
+    2.  `renderTable()`: Itera sobre el objeto `players`. Por cada jugador:
+        a.  Crea un `<tr>` (fila).
+        b.  El primer `<td>` contiene un `<button>` con el nombre del jugador y un 
+            atributo `data-player-id`.
+        c.  Luego, itera *nuevamente* sobre el array `questions` para crear el resto de
+            `<td>` de esa fila.
+        d.  Cada uno de estos `<td>` contiene un `<input type="checkbox">`.
+        e.  **CRÍTICO:** El `id` de cada checkbox se genera combinando el ID del jugador
+            y el ID de la pregunta (ej: `id="pepe-a"`). Esto es fundamental para 
+            la lógica de puntuación y persistencia.
+
+    --- 3. LÓGICA DE INTERACTIVIDAD (Modales y Puntuación) ---
+
+    La interactividad se maneja con "Delegación de Eventos" (Event Delegation). En lugar de 
+    añadir un listener a cada botón/checkbox, se añaden listeners a sus contenedores padres
+    (`tableHead` y `tableBody`).
+
+    1.  **Modal de Pregunta (`showQuestionModal`):**
+        -   Se activa por el listener en `tableHead` que detecta clics en `button[data-question-id]`.
+        -   Usa el `data-question-id` para encontrar el objeto de la pregunta en el array `questions`.
+        -   Rellena el modal `#question-modal` con el enunciado, respuesta y puntos.
+        
+    2.  **Modal de Jugador (`showModal`):**
+        -   Se activa por el listener en `tableBody` que detecta clics en `button[data-player-id]`.
+        -   Usa el `data-player-id` para encontrar al jugador y rellenar sus datos.
+        -   **Cálculo de Puntos (Lógica Clave):**
+            i.   Selecciona todos los checkboxes de ese jugador (ej: `querySelectorAll('input[id^="pepe-"]')`).
+            ii.  Itera sobre ellos.
+            iii. Si un checkbox está `.checked`, obtiene su `id` (ej: "pepe-a").
+            iv.  Extrae el ID de la pregunta de ese string (ej: "a").
+            v.   Busca la pregunta correspondiente en el array `questions` (ej: `questions.find(q => q.id === 'a')`).
+            vi.  Obtiene la propiedad `.puntos` de esa pregunta y la suma a un total.
+            vii. Muestra el total de puntos en el modal.
+
+    --- 4. ESTRATEGIA DE PERSISTENCIA (LocalStorage) ---
+
+    El estado de los checkboxes se guarda para que no se pierda al recargar la página.
+
+    1.  **Guardado (`saveState`):**
+        -   Se activa con el evento `change` en `tableBody` (delegado).
+        -   Toma el checkbox que cambió.
+        -   Guarda su estado en `localStorage` usando su `id` como clave.
+        -   `localStorage.setItem('pepe-a', true);`
+        
+    2.  **Carga (`loadState`):**
+        -   Se llama una vez al cargar la página, *después* de `renderTable()`.
+        -   Selecciona *todos* los checkboxes de la tabla.
+        -   Para cada uno, usa su `id` para consultar `localStorage`.
+        -   Si `localStorage.getItem('pepe-a')` devuelve `'true'`, marca ese checkbox.
+    -->
+
+    <!-- Incluimos Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Usamos la fuente Inter */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilos personalizados para los checkboxes */
+/* ... existing code ... -->
+        .table-container {
+            width: 100%;
+            overflow-x: auto; /* Permite scroll horizontal si la tabla es muy ancha */
+/* ... existing code ... -->
+        table {
+            min-width: 600px; /* Ancho mínimo para forzar el scroll si es necesario */
+        }
+        /* Estilo para el modal (ficha) */
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg w-full max-w-6xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">
+            MemoryCat
+        </h1>
+
+        <!-- Contenedor para la tabla con scroll horizontal en móviles -->
+        <div class="table-container rounded-lg border border-gray-200 shadow-sm">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <!-- Celda de esquina para Jugadores -->
+                        <th class="p-3 sm:p-4 text-sm font-semibold text-gray-700 tracking-wider sticky left-0 bg-gray-50 z-10">
+                            Jugador
+                        </th>
+                        <!-- Cabeceras de Preguntas (a-w) -->
+                        <script>
+                            // Generar las 23 preguntas de 'a' a 'w'
+                            // Esta variable se moverá al script principal para tener mejor alcance
+                        </script>
+                        <!-- Se generará dinámicamente -->
+                    </tr>
+                </thead>
+                <tbody id="player-grid" class="bg-white divide-y divide-gray-200">
+                    <!-- Las filas de los jugadores se generarán dinámicamente con JS -->
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- Modal (Ficha del Jugador) -->
+    <div id="player-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 hidden" aria-modal="true" role="dialog">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm transform transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Ficha del Jugador</h2>
+                <button id="modal-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
+            </div>
+            <div>
+                <h3 id="modal-name" class="text-xl font-semibold text-blue-600 mb-2"></h3>
+                <p id="modal-course" class="text-gray-700 mb-1"></p>
+                <p id="modal-points" class="text-gray-700 font-medium text-lg"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal (Ficha de Pregunta) -->
+    <div id="question-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 hidden" aria-modal="true" role="dialog">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md transform transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="modal-q-title" class="text-2xl font-bold text-gray-800">Ficha de Pregunta</h2>
+                <button id="modal-q-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Enunciado</h4>
+                    <p id="modal-q-enunciado" class="text-gray-800 text-lg"></p>
+                </div>
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Respuesta</h4>
+                    <p id="modal-q-respuesta" class="text-gray-800 text-lg"></p>
+                </div>
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Puntos</h4>
+                    <p id="modal-q-puntos" class="text-gray-800 text-lg font-bold"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        /**
+         * Cuenta las palabras en una cadena de texto.
+         */
+        function countWords(str) {
+            if (!str) return 0;
+            return str.split(' ').filter(Boolean).length;
+        }
+
+        // --- Variables Globales ---
+        
+        // Creamos la lista de preguntas como objetos
+        const initialQuestionsData = [
+            { 
+                id: 'a', 
+                title: 'A', 
+                enunciado: '¿Cuántos son los Mandamientos de la ley de Dios?', 
+                respuesta: 'Los Mandamientos de la Ley de Dios son 10'
+            }
+            // Puedes añadir más preguntas predefinidas aquí
+        ];
+
+        // Generamos las 23 preguntas
+        const questions = Array.from({ length: 23 }, (_, i) => {
+            const char = String.fromCharCode(97 + i);
+            const predefined = initialQuestionsData.find(q => q.id === char);
+            
+            if (predefined) {
+                return { ...predefined, puntos: countWords(predefined.respuesta) };
+            }
+
+            // Placeholder para el resto
+            const title = char.toUpperCase();
+            const respuesta = `Respuesta de la pregunta ${title}`;
+            return {
+                id: char,
+                title: title,
+                enunciado: `Enunciado de la pregunta ${title}`,
+                respuesta: respuesta,
+                puntos: countWords(respuesta)
+            };
+        });
+        
+        const players = {
+            'pepe': { id: 'pepe', name: 'Pepe Pérez', course: 'Curso A' },
+            'juan': { id: 'juan', name: 'Juan Jimenez', course: 'Curso B' }
+        };
+
+        // --- Elementos del DOM ---
+        const tableHead = document.querySelector('table thead tr');
+        const tableBody = document.getElementById('player-grid');
+        
+        // Modal de Jugador
+        const modal = document.getElementById('player-modal');
+        const modalName = document.getElementById('modal-name');
+        const modalCourse = document.getElementById('modal-course');
+        const modalPoints = document.getElementById('modal-points');
+        const modalClose = document.getElementById('modal-close');
+
+        // Modal de Pregunta
+        const qModal = document.getElementById('question-modal');
+        const qModalTitle = document.getElementById('modal-q-title');
+        const qModalEnunciado = document.getElementById('modal-q-enunciado');
+        const qModalRespuesta = document.getElementById('modal-q-respuesta');
+        const qModalPuntos = document.getElementById('modal-q-puntos');
+        const qModalClose = document.getElementById('modal-q-close');
+
+
+        // --- Funciones ---
+
+        /**
+         * Renderiza la cabecera de la tabla (Preguntas)
+         */
+        function renderHeader() {
+            let headerHTML = `
+                <th class="p-3 sm:p-4 text-sm font-semibold text-gray-700 tracking-wider sticky left-0 bg-gray-50 z-10">
+                    Jugador
+                </th>`;
+            
+            questions.forEach(q => {
+                headerHTML += `
+                    <th class="p-1 sm:p-2 text-center w-16">
+                        <button data-question-id="${q.id}" class="w-full text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-3 rounded transition duration-150 ease-in-out">
+                            ${q.title}
+                        </button>
+                    </th>`;
+            });
+            tableHead.innerHTML = headerHTML;
+        }
+
+        /**
+         * Renderiza las filas de la tabla (Jugadores y Checkboxes)
+         */
+        function renderTable() {
+            tableBody.innerHTML = ''; // Limpiar cuerpo de la tabla
+
+            Object.values(players).forEach(player => {
+                const tr = document.createElement('tr');
+                
+                // Celda del botón del jugador
+                let rowHTML = `
+                    <td class="p-3 sm:p-4 text-md font-medium text-gray-900 sticky left-0 bg-white z-10">
+                        <button id="btn-${player.id}" data-player-id="${player.id}" class="w-full text-left bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition duration-150 ease-in-out">
+                            ${player.name}
+                        </button>
+                    </td>`;
+                
+                // Celdas de checkboxes
+                questions.forEach(q => {
+                    rowHTML += `
+                        <td class="p-3 sm:p-4 text-center">
+                            <input type="checkbox" id="${player.id}-${q.id}" class="form-checkbox text-green-500 focus:ring-green-400 focus:ring-2 rounded cursor-pointer" aria-label="${player.name}, pregunta ${q.title}">
+                        </td>`;
+                });
+
+                tr.innerHTML = rowHTML;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        /**
+         * Muestra el modal con la información del jugador
+         */
+        function showModal(playerId) {
+            const player = players[playerId];
+            if (!player) return;
+
+            // Calcular puntos
+            const checkboxes = document.querySelectorAll(`input[id^="${playerId}-"]`);
+            let score = 0;
+            checkboxes.forEach(box => {
+                if (box.checked) {
+                    // ID del checkbox (ej: "pepe-a")
+                    const checkboxId = box.id;
+                    // Extraemos la parte de la pregunta (ej: "a")
+                    const idParts = checkboxId.split('-');
+                    const questionId = idParts[idParts.length - 1];
+
+                    // Buscamos la pregunta en nuestro array global
+                    const question = questions.find(q => q.id === questionId);
+
+                    // Si encontramos la pregunta y tiene puntos, los sumamos
+                    if (question && question.puntos) {
+                        score += question.puntos;
+                    }
+                }
+            });
+
+            // Poblar modal
+            modalName.textContent = player.name;
+            modalCourse.textContent = `Curso: ${player.course}`;
+            modalPoints.textContent = `Puntos acumulados: ${score}`; // Nota: Sigue contando los "sí" (checkboxes)
+
+            // Mostrar modal
+            modal.classList.remove('hidden');
+            modal.classList.add('opacity-100');
+        }
+
+        /**
+         * Oculta el modal
+         */
+        function hideModal() {
+            modal.classList.add('opacity-0');
+            // Esperar a que termine la transición para ocultarlo
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('opacity-0'); // Reset para la próxima vez
+            }, 300); // 300ms debe coincidir con la duración de la transición
+        }
+
+        /**
+         * Muestra el modal con la información de la pregunta
+         */
+        function showQuestionModal(questionId) {
+            const question = questions.find(q => q.id === questionId);
+            if (!question) return;
+
+            // Poblar modal
+            qModalTitle.textContent = `Pregunta ${question.title}`;
+            qModalEnunciado.textContent = question.enunciado;
+            qModalRespuesta.textContent = question.respuesta;
+            qModalPuntos.textContent = `${question.puntos} puntos`;
+
+            // Mostrar modal
+            qModal.classList.remove('hidden');
+            qModal.classList.add('opacity-100');
+        }
+
+        /**
+         * Oculta el modal de pregunta
+         */
+        function hideQuestionModal() {
+            qModal.classList.add('opacity-0');
+            // Esperar a que termine la transición para ocultarlo
+            setTimeout(() => {
+                qModal.classList.add('hidden');
+                qModal.classList.remove('opacity-0'); // Reset para la próxima vez
+            }, 300); // 300ms debe coincidir con la duración de la transición
+        }
+
+
+        /**
+         * Carga el estado de los checkboxes desde localStorage
+         */
+        function loadState() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(box => {
+                const state = localStorage.getItem(box.id);
+                if (state === 'true') {
+                    box.checked = true;
+                }
+            });
+        }
+
+        /**
+         * Guarda el estado de un checkbox en localStorage
+         */
+        function saveState(checkbox) {
+            localStorage.setItem(checkbox.id, checkbox.checked);
+        }
+
+        // --- Inicialización y Event Listeners ---
+        
+        window.addEventListener('load', () => {
+            renderHeader();
+            renderTable();
+            loadState();
+
+            // Listeners para botones de jugador (delegación de eventos)
+            tableBody.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-player-id]');
+                if (button) {
+                    showModal(button.dataset.playerId);
+                }
+            });
+
+            // *** NUEVO: Listeners para botones de pregunta (delegación de eventos) ***
+            tableHead.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-question-id]');
+                if (button) {
+                    showQuestionModal(button.dataset.questionId);
+                }
+            });
+
+            // Listeners para checkboxes (delegación de eventos)
+            tableBody.addEventListener('change', (event) => {
+                if (event.target.type === 'checkbox') {
+                    saveState(event.target);
+                }
+            });
+
+            // Listeners para cerrar modal JUGADOR
+            modalClose.addEventListener('click', hideModal);
+            modal.addEventListener('click', (event) => {
+                // Cerrar si se hace clic en el fondo (overlay)
+                if (event.target === modal) {
+                    hideModal();
+                }
+            });
+
+            // *** NUEVO: Listeners para cerrar modal PREGUNTA ***
+            qModalClose.addEventListener('click', hideQuestionModal);
+            qModal.addEventListener('click', (event) => {
+                // Cerrar si se hace clic en el fondo (overlay)
+                if (event.target === qModal) {
+                    hideQuestionModal();
+                }
+            });
+        });
+
+    </script>
+
+</body>
+</html>
