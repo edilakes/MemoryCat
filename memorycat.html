@@ -81,14 +81,13 @@
 
     <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-6xl">
         
-        <!-- Contenedor del Título y el Botón de Ajustes (Versión anterior) -->
+        <!-- Contenedor del Título y el Botón de Ajustes -->
         <div class="flex justify-between items-center mb-6">
-            <!-- Botón de Ajustes (simplificado: solo para info de la app) -->
-            <button id="settings-btn" class="text-gray-500 hover:text-gray-700 p-2 rounded-full transition duration-150 ease-in-out" aria-label="Ajustes y Opciones">
+            <!-- Botón de Ajustes (AHORA ABRE EL MODAL DE IMPORTAR/EXPORTAR) -->
+            <button id="settings-btn" class="text-gray-500 hover:text-gray-700 p-2 rounded-full transition duration-150 ease-in-out" aria-label="Ajustes de Importación y Exportación">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="12" cy="5" r="1"></circle>
-                    <circle cx="12" cy="19" r="1"></circle>
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                 </svg>
             </button>
 
@@ -116,7 +115,7 @@
 
     </div>
 
-    <!-- Modal (Ficha del Jugador) - Aquí se muestra la PUNTUACIÓN (sigue siendo útil para ver detalles) -->
+    <!-- Modal (Ficha del Jugador) - Detalles y Puntuación -->
     <div id="player-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm transform transition-all scale-100" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-4">
@@ -163,6 +162,65 @@
                     <p id="modal-q-puntos" class="text-xl text-yellow-800 font-extrabold"></p>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- NUEVO: Modal (Ajustes: Importar/Exportar) -->
+    <div id="settings-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg transform transition-all scale-100" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Importar / Exportar Datos</h2>
+                <button id="modal-settings-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
+            </div>
+            
+            <p class="text-gray-600 mb-6">Selecciona el tipo de datos para importar o exportar en formato JSON.</p>
+
+            <!-- Contenedor para Jugadores -->
+            <div class="mb-5 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <h3 class="text-lg font-semibold text-indigo-800 mb-3">1. Jugadores</h3>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button id="export-players-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
+                        Exportar Jugadores
+                    </button>
+                    <!-- Input de archivo oculto para Importar Jugadores -->
+                    <label for="import-players-file" class="flex-1 text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-150">
+                        Importar Jugadores (JSON)
+                        <input type="file" id="import-players-file" class="hidden" accept=".json" data-collection-key="players">
+                    </label>
+                </div>
+            </div>
+
+            <!-- Contenedor para Preguntas -->
+            <div class="mb-5 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h3 class="text-lg font-semibold text-green-800 mb-3">2. Preguntas</h3>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button id="export-questions-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
+                        Exportar Preguntas
+                    </button>
+                    <!-- Input de archivo oculto para Importar Preguntas -->
+                    <label for="import-questions-file" class="flex-1 text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-150">
+                        Importar Preguntas (JSON)
+                        <input type="file" id="import-questions-file" class="hidden" accept=".json" data-collection-key="questions">
+                    </label>
+                </div>
+            </div>
+
+            <!-- Contenedor para Aciertos (Hits) -->
+            <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <h3 class="text-lg font-semibold text-yellow-800 mb-3">3. Aciertos</h3>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button id="export-hits-btn" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
+                        Exportar Aciertos
+                    </button>
+                    <!-- Input de archivo oculto para Importar Aciertos -->
+                    <label for="import-hits-file" class="flex-1 text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-150">
+                        Importar Aciertos (JSON)
+                        <input type="file" id="import-hits-file" class="hidden" accept=".json" data-collection-key="hits">
+                    </label>
+                </div>
+            </div>
+
+            <div id="import-message" class="mt-4 text-center text-sm font-medium hidden"></div>
         </div>
     </div>
 
@@ -231,7 +289,6 @@
         ];
 
         // La lista completa de preguntas con los puntos y títulos calculados
-        // ATENCIÓN: Esta lista es la que se modifica al editar el título.
         let questions = []; 
 
         // La fuente de datos de los jugadores (OBJECT). Con IDs estables.
@@ -248,20 +305,40 @@
         const HITS_KEY = 'memcat_hits';
         // CLAVE ADICIONAL para guardar la lista de preguntas
         const QUESTIONS_KEY = 'memcat_questions'; 
+        // CLAVE NUEVA para guardar la lista de jugadores
+        const PLAYERS_KEY = 'memcat_players'; 
 
         /**
-         * Guarda el estado de los aciertos y las preguntas.
+         * Guarda el estado de los aciertos, las preguntas, y los jugadores.
          */
         function saveState() {
             localStorage.setItem(HITS_KEY, JSON.stringify(hitsState));
-            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(questions)); // Guarda la estructura actual de preguntas
+            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(questions)); 
+            localStorage.setItem(PLAYERS_KEY, JSON.stringify(players)); // Guarda el objeto de jugadores
         }
 
         /**
-         * Carga el estado de los aciertos y las preguntas.
+         * Carga el estado de los aciertos, las preguntas, y los jugadores.
          */
         function loadState() {
-            // Carga el estado de los aciertos
+            // 1. Carga Jugadores
+            const storedPlayers = localStorage.getItem(PLAYERS_KEY);
+            if (storedPlayers) {
+                players = JSON.parse(storedPlayers);
+            } 
+            
+            // 2. Carga Preguntas
+            const storedQuestions = localStorage.getItem(QUESTIONS_KEY);
+            if (storedQuestions) {
+                questions = JSON.parse(storedQuestions);
+            } else {
+                // Si no hay preguntas guardadas, inicializamos la estructura completa.
+                // initializeData() llama a saveState(), guardando todo (incluidos los jugadores por defecto).
+                 initializeData();
+                 return;
+            }
+
+            // 3. Carga el estado de los aciertos
             const storedHits = localStorage.getItem(HITS_KEY);
             if (storedHits) {
                 hitsState = JSON.parse(storedHits);
@@ -269,18 +346,9 @@
                  hitsState = {}; // Si no hay hits, inicializa vacío
             }
             
-            // Carga la estructura de las preguntas si existe
-            const storedQuestions = localStorage.getItem(QUESTIONS_KEY);
-            if (storedQuestions) {
-                // Si hay preguntas guardadas, las usamos
-                questions = JSON.parse(storedQuestions);
-            } else {
-                // Si no hay preguntas guardadas, inicializamos la estructura completa
-                 initializeData();
-            }
-
-
-            // Aplica el estado de aciertos a los checkboxes (se hace en fullRender/renderTable)
+            // Si llegamos aquí y no se llamó a initializeData, guardamos el estado 
+            // (Esto asegura que los jugadores por defecto se persistan si las preguntas ya existían).
+            saveState();
         }
         
         /**
@@ -319,15 +387,12 @@
                     puntos: calculatedPoints // Asignamos los puntos calculados
                 });
             }
-            // Guardamos el estado inicial de las preguntas al crear la estructura
+            // Guardamos el estado inicial de las preguntas, jugadores y hits (vacío)
             saveState(); 
         }
 
         /**
          * Obtiene la ID de la pregunta a partir de la ID del acierto (que tiene el formato playerId-questionId).
-         * @param {string} hitId La clave del acierto (ej: 'player-pepe-uuid1234')
-         * @param {string} playerId El ID del jugador (ej: 'player-pepe')
-         * @returns {string | null} La ID de la pregunta (ej: 'uuid1234')
          */
         function getQuestionIdFromHitId(hitId, playerId) {
             // El ID de la pregunta es lo que queda después del ID del jugador y el guión.
@@ -344,11 +409,9 @@
          */
         function calculatePlayerScore(playerId) {
             // Filtra todos los IDs de aciertos que comienzan con el ID del jugador
-            // La clave de acierto YA usa el ID único/UUID de la pregunta.
             const playerHitIds = Object.keys(hitsState).filter(key => key.startsWith(playerId + '-'));
             let score = 0;
             
-            // Lógica de Puntuación: SUMA LOS PUNTOS DE LAS PREGUNTAS ACERTADAS
             playerHitIds.forEach(hitId => {
                 // Solo suma si la casilla está marcada como acertada (true)
                 if (hitsState[hitId]) { 
@@ -374,12 +437,11 @@
         const tableBody = document.getElementById('player-grid');
         const playerModal = document.getElementById('player-modal');
         const questionModal = document.getElementById('question-modal');
-        // Usamos el nuevo ID para el elemento P de solo lectura
+        const settingsModal = document.getElementById('settings-modal'); // NUEVO
         const questionTitleDisplay = document.getElementById('modal-q-title-display'); 
-        
-        // La función de edición se mantiene, pero ya no se usa el listener del change del input.
-        function updateQuestionTitle() { /* NO HAY NADA QUE HACER */ }
+        const importMessage = document.getElementById('import-message'); // Mensaje de feedback
 
+        
         /**
          * Muestra un modal
          */
@@ -394,6 +456,18 @@
         function hideModal(modalElement) {
             modalElement.classList.remove('open');
             modalElement.setAttribute('aria-hidden', 'true');
+        }
+        
+        /**
+         * Muestra un mensaje de éxito o error en el modal de importación/exportación.
+         */
+        function showImportMessage(message, isError = true) {
+            importMessage.textContent = message;
+            importMessage.classList.remove('hidden', 'text-red-600', 'text-green-600');
+            importMessage.classList.add(isError ? 'text-red-600' : 'text-green-600');
+            setTimeout(() => {
+                importMessage.classList.add('hidden');
+            }, 5000);
         }
 
         /**
@@ -419,8 +493,9 @@
          */
         function renderTable() {
             tableBody.innerHTML = ''; 
-
-            Object.values(players).forEach(player => {
+            
+            // Aseguramos que players sea un array de valores (aunque se almacene como objeto)
+            Object.values(players).forEach(player => { 
                 const tr = document.createElement('tr');
                 
                 // Celda del jugador: Ahora muestra el nombre Y la puntuación en un span
@@ -511,12 +586,102 @@
             
             showModal(questionModal);
         }
+        
+        // --- Lógica de Importación/Exportación ---
+
+        /**
+         * Exporta datos JSON a un archivo descargable.
+         * @param {object} data Objeto o Array a exportar.
+         * @param {string} filename Nombre del archivo.
+         */
+        function exportData(data, filename) {
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            // Crear un enlace temporal para la descarga
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url); // Limpiar URL del objeto
+            
+            showImportMessage(`Datos de ${filename.replace('memcat_', '').replace('.json', '')} exportados con éxito.`, false);
+        }
+
+        /**
+         * Importa datos JSON desde un archivo y actualiza la colección.
+         * @param {Event} event Evento de cambio del input de archivo.
+         * @param {string} collectionKey Clave de la colección ('players', 'questions', 'hits').
+         */
+        function importData(event, collectionKey) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+
+                    if (collectionKey === 'players') {
+                        if (typeof importedData !== 'object' || Array.isArray(importedData)) {
+                            throw new Error('El archivo de Jugadores debe ser un objeto.');
+                        }
+                        players = importedData;
+                        saveState();
+                        fullRender(); // Re-renderizar todo
+                        showImportMessage('Jugadores importados y guardados con éxito.', false);
+
+                    } else if (collectionKey === 'questions') {
+                         if (!Array.isArray(importedData)) {
+                            throw new Error('El archivo de Preguntas debe ser un array.');
+                        }
+                        // Recalcular puntos para las preguntas importadas (garantizar consistencia)
+                        questions = importedData.map(q => ({
+                            ...q,
+                            puntos: countWords(q.respuesta) > 0 ? countWords(q.respuesta) : 1
+                        }));
+                        saveState();
+                        fullRender(); // Re-renderizar todo
+                        showImportMessage('Preguntas importadas y guardadas con éxito.', false);
+                        
+                    } else if (collectionKey === 'hits') {
+                        if (typeof importedData !== 'object' || Array.isArray(importedData)) {
+                            throw new Error('El archivo de Aciertos debe ser un objeto.');
+                        }
+                        hitsState = importedData;
+                        saveState();
+                        // Actualizar la vista sin recrear la estructura de players/questions
+                        initializeAndRenderHeader(); 
+                        renderTable(); 
+                        Object.keys(players).forEach(playerId => updatePlayerScoreDisplay(playerId)); 
+                        showImportMessage('Aciertos importados y guardados con éxito.', false);
+
+                    }
+
+                    // Limpiar el input file para permitir la misma importación de nuevo
+                    event.target.value = ''; 
+
+                } catch (error) {
+                    console.error("Error al importar datos:", error);
+                    showImportMessage('ERROR: El archivo no es un JSON válido o tiene un formato incorrecto.', true);
+                    event.target.value = ''; // Limpiar el input file
+                }
+            };
+
+            reader.readAsText(file);
+        }
+        // --- FIN Lógica de Importación/Exportación ---
+
 
         /**
          * Inicializa la aplicación: carga estado (o inicializa), renderiza.
          */
         function fullRender() {
-            // Carga o inicializa los datos de preguntas y aciertos.
+            // Carga o inicializa los datos de preguntas, jugadores y aciertos.
             loadState(); 
             
             // Renderiza la interfaz
@@ -577,15 +742,12 @@
             });
 
             // 3. Escucha clics en la cabecera para ver detalles de la Pregunta
-            // Delegamos el evento en la fila de la cabecera
             tableHeadRow.addEventListener('click', (event) => {
                 const header = event.target.closest('th[data-question-id]');
                 if (header) showQuestionModal(header.dataset.questionId);
             });
             
-            // 4. Se eliminó el listener para la edición del título.
-
-            // 5. Listeners para cerrar modales
+            // 4. Listeners para cerrar modales (Jugador y Pregunta)
             document.getElementById('modal-close').addEventListener('click', () => hideModal(playerModal));
             document.getElementById('modal-q-close').addEventListener('click', () => hideModal(questionModal));
             playerModal.addEventListener('click', (e) => {
@@ -594,6 +756,23 @@
             questionModal.addEventListener('click', (e) => {
                  if (e.target === questionModal) hideModal(questionModal);
             });
+            
+            // 5. NUEVOS Listeners para el Modal de Ajustes (Importar/Exportar)
+            document.getElementById('settings-btn').addEventListener('click', () => showModal(settingsModal));
+            document.getElementById('modal-settings-close').addEventListener('click', () => hideModal(settingsModal));
+            settingsModal.addEventListener('click', (e) => {
+                 if (e.target === settingsModal) hideModal(settingsModal);
+            });
+
+            // Listeners de Exportación
+            document.getElementById('export-players-btn').addEventListener('click', () => exportData(players, 'memcat_jugadores.json'));
+            document.getElementById('export-questions-btn').addEventListener('click', () => exportData(questions, 'memcat_preguntas.json'));
+            document.getElementById('export-hits-btn').addEventListener('click', () => exportData(hitsState, 'memcat_aciertos.json'));
+
+            // Listeners de Importación
+            document.getElementById('import-players-file').addEventListener('change', (e) => importData(e, 'players'));
+            document.getElementById('import-questions-file').addEventListener('change', (e) => importData(e, 'questions'));
+            document.getElementById('import-hits-file').addEventListener('change', (e) => importData(e, 'hits'));
         });
 
     </script>
