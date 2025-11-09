@@ -7,17 +7,23 @@
     <title>MemoryCat</title>
 
     <!-- 
-    OBJETIVO: Aplicación de seguimiento de aciertos con edición local, persistencia local y exportación/importación de datos via JSON.
-    - Exportación: Genera 3 archivos JSON (jugadores, preguntas, aciertos).
-    - Importación: Lee 3 archivos JSON subidos por el usuario para restaurar el estado.
+    OBJETIVO: Aplicación de seguimiento de aciertos con estabilidad garantizada.
+    - FILAS: Jugadores.
+    - COLUMNAS: Preguntas (etiquetadas A, B, C...).
+    - INTERSECCIÓN: Checkboxes (aciertos/fallos).
+    - PUNTUACIÓN: Se calcula haciendo clic en el botón del Jugador.
+    - PERSISTENCIA: Los datos se guardan en el navegador (localStorage) para este ejemplo.
+    - NOVEDAD: Se añade el modal de "Datos y Herramientas" para gestión de jugadores, preguntas y mantenimiento modular.
     -->
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Incluye el ícono de engranaje (cog) para el botón de herramientas -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLMDJzL31r+fX0H+mE+p9wT0xW0GjLgS8V10jE/g5rI9E4lA0x9F41tDqGzD/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
         /* Usamos la fuente Inter */
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f7fafc; /* gray-100 */
+            background-color: #f7f7f7;
         }
         /* Estilos personalizados para los checkboxes */
         .form-checkbox {
@@ -28,669 +34,801 @@
             cursor: pointer;
             border-radius: 0.25rem;
             border-color: #a0aec0; /* gray-400 */
+            transition: all 0.2s;
         }
         .form-checkbox:checked {
              border-color: transparent;
              background-color: #38a169; /* green-600 */
-             /* Usamos SVG para el checkmark en lugar de la imagen de fondo por defecto */
-             background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M13.67 4.33a.85.85 0 011.2 0l-7.25 7.25a.85.85 0 01-1.2 0L.33 8.33a.85.85 0 011.2-1.2l3.75 3.75 6.67-6.67a.85.85 0 011.2 0z'/%3e%3c/svg%3e");
-             background-size: 100% 100%;
-             background-position: center;
-             background-repeat: no-repeat;
+             /* Un pequeño efecto de sombra al ser checkeado */
+             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
         }
-        /* Estilo para el hover de las celdas de pregunta */
-        th[data-question-id]:hover,
-        .player-button:hover {
+
+        /* Estilo para el contenedor de la tabla para permitir scroll horizontal */
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch; /* Para un scroll más suave en iOS */
+        }
+        
+        /* Estilo para los Modales */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: none; /* Oculto por defecto */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        /* Estilo para el contenido del modal */
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Estilo para el modal de herramientas */
+        #dataToolsModal .modal-content {
+            min-width: 500px; /* Ancho mínimo para escritorio */
+            max-width: 768px; /* Ancho máximo para escritorio */
+        }
+
+        /* Estilo para los botones de las pestañas */
+        .tab-button {
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem 0.5rem 0 0;
             cursor: pointer;
-            background-color: #e2e8f0; /* gray-200 */
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .tab-button.active {
+            background-color: white;
+            color: #10b981; /* esmeralda-500 */
+            border-bottom: 2px solid #10b981;
+        }
+        .tab-content {
+            padding: 1rem;
+            border: 1px solid #e2e8f0; /* gray-200 */
+            border-top: none;
+            border-radius: 0 0 0.5rem 0.5rem;
+            background-color: white;
         }
     </style>
 </head>
-<body>
+<body class="p-4 md:p-8">
 
-    <div class="min-h-screen p-4 md:p-8">
-        <header class="text-center mb-6">
-            <h1 class="text-4xl font-extrabold text-indigo-800">MemoryCat</h1>
-            <p class="text-xl text-gray-600 mt-1">Seguimiento de aciertos de preguntas</p>
+    <div class="max-w-7xl mx-auto">
+        <!-- Título y Controles -->
+        <header class="mb-6 flex justify-between items-center flex-wrap gap-4">
+            <h1 class="text-3xl font-bold text-gray-800">MemoryCat: Seguimiento de Aciertos</h1>
+            
+            <div class="flex space-x-3">
+                <!-- Botón de Datos y Herramientas -->
+                <button id="data-tools-button" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-lg shadow-md transition duration-300 flex items-center">
+                    <i class="fas fa-cog mr-2"></i> Datos y Herramientas
+                </button>
+            </div>
         </header>
 
-        <div class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-4 md:p-6">
-            
-            <!-- Controles de Importación / Exportación -->
-            <div class="flex flex-col sm:flex-row justify-between gap-3 mb-6 p-4 bg-gray-50 rounded-lg border">
-                
-                <button id="export-data" class="flex-1 px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-150">
-                    Exportar Datos (JSON) 
-                </button>
-                
-                <!-- Input de archivo oculto para la importación -->
-                <input type="file" id="import-file-input" accept=".json" multiple hidden>
-                <button id="import-data" class="flex-1 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-150">
-                    Importar Datos (JSON) 
-                </button>
-            </div>
+        <!-- Contenedor de la Tabla -->
+        <div class="bg-white p-4 rounded-xl shadow-2xl table-container">
+            <table class="min-w-full divide-y divide-gray-300">
+                <thead id="table-head" class="bg-gray-50">
+                    <!-- Las cabeceras de las preguntas se renderizan aquí -->
+                </thead>
+                <tbody id="table-body" class="divide-y divide-gray-200">
+                    <!-- Las filas de jugadores y checkboxes se renderizan aquí -->
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-
-            <div id="loading-spinner" class="hidden text-center p-4">
-                <div class="animate-spin inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full" role="status"></div>
-                <p class="text-indigo-600 mt-2">Cargando datos...</p>
+    <!-- ------------------------------------------------------------------ -->
+    <!-- MODALES EXISTENTES -->
+    <!-- ------------------------------------------------------------------ -->
+    <div id="playerModal" class="modal-overlay">
+        <div class="modal-content w-full md:max-w-xl">
+            <button id="modal-close" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition">
+                <i class="fas fa-times text-2xl"></i>
+            </button>
+            <h2 id="modal-title" class="text-2xl font-bold mb-4 text-gray-800"></h2>
+            <div id="modal-body" class="space-y-3">
+                <!-- Contenido de la puntuación y aciertos se inyecta aquí -->
             </div>
+            <div id="modal-score" class="mt-4 p-3 bg-green-100 border-l-4 border-green-500 text-green-800 rounded-lg font-bold text-xl"></div>
+        </div>
+    </div>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead id="table-head" class="bg-indigo-50 border-b-2 border-indigo-200">
-                        <tr>
-                            <th scope="col" class="sticky left-0 bg-indigo-50 px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider rounded-tl-lg">
-                                Jugador
-                            </th>
-                            <!-- Las cabeceras de Preguntas se generan con JS -->
-                        </tr>
-                    </thead>
-                    <tbody id="table-body" class="bg-white divide-y divide-gray-200">
-                        <!-- Las filas de jugadores se generan con JS -->
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="mt-6 text-sm text-gray-500 p-2 border-t pt-4">
-                <p>💡 Haz clic en el nombre de un jugador para **editar sus datos o ver su puntuación**. Haz clic en la cabecera de una pregunta para editar su contenido.</p>
-                <div id="feedback-message" class="mt-2 text-center font-semibold text-sm"></div>
+    <div id="questionModal" class="modal-overlay">
+        <div class="modal-content w-full md:max-w-lg">
+            <button id="modal-q-close" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition">
+                <i class="fas fa-times text-2xl"></i>
+            </button>
+            <h2 id="modal-q-title" class="text-2xl font-bold mb-4 text-gray-800"></h2>
+            <div id="modal-q-body" class="space-y-3 text-gray-700">
+                <p class="font-semibold text-lg mb-2">Enunciado:</p>
+                <p id="modal-q-enunciado" class="p-2 bg-gray-50 rounded-md"></p>
+                <p class="font-semibold text-lg mb-2">Respuesta Correcta:</p>
+                <p id="modal-q-respuesta" class="p-2 bg-gray-50 rounded-md"></p>
+                <div id="modal-q-puntos" class="mt-4 p-3 bg-blue-100 border-l-4 border-blue-500 text-blue-800 rounded-lg font-bold text-lg"></div>
             </div>
         </div>
     </div>
 
-    <!-- Modal de Edición de Jugador y Puntuación -->
-    <div id="player-edit-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 transition-opacity duration-300" style="backdrop-filter: blur(5px);">
-        <!-- Contenido del Modal -->
-        <div class="relative top-10 mx-auto p-5 border w-full max-w-md shadow-lg rounded-xl bg-white transform transition-all duration-300">
-            <div class="mt-3 text-center">
-                <h3 class="text-2xl leading-6 font-bold text-indigo-800 mb-4" id="modal-player-edit-title">Editar Jugador</h3>
+    <!-- ------------------------------------------------------------------ -->
+    <!-- MODAL DE DATOS Y HERRAMIENTAS -->
+    <!-- ------------------------------------------------------------------ -->
+    <div id="dataToolsModal" class="modal-overlay">
+        <div class="modal-content">
+            <button id="modal-tools-close" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition">
+                <i class="fas fa-times text-2xl"></i>
+            </button>
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Datos y Herramientas</h2>
+
+            <!-- Pestañas de Navegación -->
+            <div class="flex border-b border-gray-200 -mx-4 md:-mx-8 px-4 md:px-8 bg-gray-50 rounded-t-lg">
+                <button id="tab-jugadores-button" class="tab-button active" data-tab="jugadores">Jugadores</button>
+                <button id="tab-preguntas-button" class="tab-button" data-tab="preguntas">Preguntas</button>
+                <button id="tab-utilidades-button" class="tab-button" data-tab="utilidades">Utilidades</button>
+            </div>
+
+            <!-- Contenido de las Pestañas -->
+            <div class="mt-4 p-4 md:p-6 bg-white rounded-b-lg border border-gray-200">
                 
-                <form id="player-edit-form" class="space-y-4">
-                    <!-- Campo oculto para guardar el ID del jugador que se está editando -->
-                    <input type="hidden" id="modal-p-id"> 
-
-                    <!-- Puntuación Actual (Solo lectura) -->
-                    <div class="bg-indigo-50 p-3 rounded-lg">
-                        <p class="text-lg text-gray-700">Puntuación: <span class="font-extrabold text-green-600" id="modal-player-score">0</span> Puntos</p>
+                <!-- Pestaña Jugadores -->
+                <div id="tab-content-jugadores" class="tab-content active" style="display: block;">
+                    <h3 class="text-xl font-semibold mb-3 border-b pb-2">Gestión de Jugadores</h3>
+                    <p class="text-gray-600 mb-4">Añade, edita o elimina jugadores. (Funcionalidad pendiente)</p>
+                    <div id="players-list-display" class="max-h-60 overflow-y-auto space-y-2 p-2 bg-gray-50 rounded-lg">
+                        <!-- La lista de jugadores se inyectará aquí -->
                     </div>
+                </div>
 
-                    <!-- Campos de Edición -->
-                    <div class="text-left">
-                        <label for="modal-p-input-name" class="block text-sm font-medium text-gray-700">Nombre</label>
-                        <input type="text" id="modal-p-input-name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                <!-- Pestaña Preguntas -->
+                <div id="tab-content-preguntas" class="tab-content" style="display: none;">
+                    <h3 class="text-xl font-semibold mb-3 border-b pb-2">Gestión de Preguntas</h3>
+                    <p class="text-gray-600 mb-4">Añade, edita o elimina preguntas. (Funcionalidad pendiente)</p>
+                    <div id="questions-list-display" class="max-h-60 overflow-y-auto space-y-2 p-2 bg-gray-50 rounded-lg">
+                        <!-- La lista de preguntas se inyectará aquí -->
                     </div>
+                </div>
+
+                <!-- Pestaña Utilidades (MODIFICADA) -->
+                <div id="tab-content-utilidades" class="tab-content" style="display: none;">
+                    <h3 class="text-xl font-semibold mb-3 border-b pb-2">Utilidades y Mantenimiento Modular</h3>
                     
-                    <div class="text-left">
-                        <label for="modal-p-input-lastname" class="block text-sm font-medium text-gray-700">Apellidos</label>
-                        <input type="text" id="modal-p-input-lastname" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                    <div class="space-y-6">
+
+                        <!-- Exportar Datos Modulares -->
+                        <div class="p-4 border rounded-lg bg-green-50">
+                            <h4 class="font-medium text-green-700 mb-3 border-b pb-1">Exportar (JSON)</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <button data-type="players" class="export-button bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-3 rounded-lg transition duration-200 text-sm">
+                                    <i class="fas fa-users mr-1"></i> Jugadores
+                                </button>
+                                <button data-type="questions" class="export-button bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-3 rounded-lg transition duration-200 text-sm">
+                                    <i class="fas fa-question mr-1"></i> Preguntas
+                                </button>
+                                <button data-type="hitsState" class="export-button bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-3 rounded-lg transition duration-200 text-sm">
+                                    <i class="fas fa-check-double mr-1"></i> Aciertos
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Importar Datos Modulares -->
+                        <div class="p-4 border rounded-lg bg-blue-50">
+                            <h4 class="font-medium text-blue-700 mb-3 border-b pb-1">Importar (JSON)</h4>
+                            <p class="text-sm text-gray-600 mb-3">Selecciona el tipo de dato y luego el archivo JSON correspondiente.</p>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                
+                                <label for="import-players" class="import-label bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg cursor-pointer transition duration-200 text-center text-sm">
+                                    <i class="fas fa-file-import mr-1"></i> Jugadores
+                                </label>
+                                <input type="file" id="import-players" data-type="players" accept="application/json" class="import-file-input hidden">
+
+                                <label for="import-questions" class="import-label bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg cursor-pointer transition duration-200 text-center text-sm">
+                                    <i class="fas fa-file-import mr-1"></i> Preguntas
+                                </label>
+                                <input type="file" id="import-questions" data-type="questions" accept="application/json" class="import-file-input hidden">
+
+                                <label for="import-hitsState" class="import-label bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg cursor-pointer transition duration-200 text-center text-sm">
+                                    <i class="fas fa-file-import mr-1"></i> Aciertos
+                                </label>
+                                <input type="file" id="import-hitsState" data-type="hitsState" accept="application/json" class="import-file-input hidden">
+
+                            </div>
+                        </div>
+
+                        <!-- Opciones Peligrosas -->
+                        <div class="p-4 border rounded-lg bg-red-50">
+                            <h4 class="font-medium text-red-700">Opciones Peligrosas</h4>
+                            <div class="mt-2 space-y-3">
+                                <button id="clear-hits-button" class="w-full bg-red-400 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+                                    <i class="fas fa-undo mr-2"></i> Borrar SÓLO Aciertos (Mantener Jugadores/Preguntas)
+                                </button>
+                                <button id="reset-factory-button" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+                                    <i class="fas fa-trash-alt mr-2"></i> ¡Reiniciar a Configuración de Fábrica! (BORRA TODO)
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
-                    <p class="text-sm text-gray-500 pt-2 border-t" id="modal-player-hits-details"></p>
-
-                    <div class="flex space-x-4 mt-6">
-                        <button type="button" id="modal-p-close" class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-gray-400 transition duration-150">
-                            Cerrar
-                        </button>
-                        <button type="submit" id="modal-p-save" class="px-4 py-2 bg-indigo-600 text-white text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-indigo-700 transition duration-150">
-                            Guardar Datos
-                        </button>
-                    </div>
-                </form>
+                </div>
             </div>
+             <!-- Mensaje de estado para las herramientas -->
+            <p id="tools-status-message" class="mt-4 p-3 bg-gray-100 text-gray-700 rounded-lg hidden transition duration-300"></p>
         </div>
     </div>
 
 
-    <!-- Modal de Detalles/Edición de la Pregunta -->
-    <div id="question-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 transition-opacity duration-300" style="backdrop-filter: blur(5px);">
-        <!-- Contenido del Modal -->
-        <div class="relative top-10 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-xl bg-white transform transition-all duration-300">
-            <div class="mt-3 text-center">
-                <h3 class="text-2xl leading-6 font-bold text-indigo-800 mb-4" id="modal-q-title">Editar Pregunta</h3>
-                <form id="question-edit-form" class="space-y-4">
-                    <!-- Campo oculto para guardar el ID de la pregunta que se está editando -->
-                    <input type="hidden" id="modal-q-id"> 
-
-                    <!-- Campo Título -->
-                    <div class="text-left">
-                        <label for="modal-q-input-title" class="block text-sm font-medium text-gray-700">Título Corto (Ej: Pregunta A)</label>
-                        <input type="text" id="modal-q-input-title" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                    </div>
-
-                    <!-- Campo Enunciado -->
-                    <div class="text-left">
-                        <label for="modal-q-input-enunciado" class="block text-sm font-medium text-gray-700">Enunciado de la Pregunta</label>
-                        <textarea id="modal-q-input-enunciado" rows="3" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"></textarea>
-                    </div>
-
-                    <!-- Campo Respuesta Clave -->
-                    <div class="text-left">
-                        <label for="modal-q-input-respuesta" class="block text-sm font-medium text-gray-700">Respuesta Clave (para calcular puntos)</label>
-                        <textarea id="modal-q-input-respuesta" rows="2" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"></textarea>
-                        <!-- MENSAJE DE PUNTUACIÓN ACTUALIZADO -->
-                        <p class="text-xs text-gray-500 mt-1">Puntuación actual: <span id="modal-q-calculated-points" class="font-bold">0</span> puntos (igual al número de palabras en la respuesta).</p>
-                    </div>
-
-                    <div class="flex space-space-x-4 mt-6">
-                        <button type="button" id="modal-q-close" class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-gray-400 transition duration-150">
-                            Cancelar
-                        </button>
-                        <button type="submit" id="modal-q-save" class="px-4 py-2 bg-green-600 text-white text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-green-700 transition duration-150">
-                            Guardar Cambios
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
+    <!-- ------------------------------------------------------------------ -->
+    <!-- SCRIPTS -->
+    <!-- ------------------------------------------------------------------ -->
     <script>
-        // *** 1. ESTRUCTURA DE DATOS INICIAL (La "Importación por JSON") ***
-        const initialQuestionsData = [
-            { id: 'q1', title: 'Pregunta A', enunciado: '¿Cuál es la capital de España?', respuesta: 'Madrid' },
-            { id: 'q2', title: 'Pregunta B', enunciado: '¿Quién escribió El Quijote?', respuesta: 'Miguel de Cervantes' },
-            { id: 'q3', title: 'Pregunta C', enunciado: 'Elemento químico cuyo símbolo es H', respuesta: 'Hidrógeno' },
-            { id: 'q4', title: 'Pregunta D', enunciado: 'Número de días en un año bisiesto', respuesta: '366 días' },
-            { id: 'q5', title: 'Pregunta E', enunciado: 'El planeta rojo', respuesta: 'Marte' },
-            { id: 'q6', title: 'Pregunta F', enunciado: 'Ave que no vuela', respuesta: 'Pingüino' },
-            { id: 'q7', title: 'Pregunta G', enunciado: '¿Qué es un byte?', respuesta: 'Un conjunto de 8 bits' },
-            { id: 'q8', title: 'Pregunta H', enunciado: 'Cuerpo geométrico con 6 caras cuadradas', respuesta: 'Cubo' },
-            { id: 'q9', title: 'Pregunta I', enunciado: 'La moneda oficial de Japón', respuesta: 'Yen' },
-            { id: 'q10', title: 'Pregunta J', enunciado: 'El río más largo del mundo', respuesta: 'Amazonas' },
-        ];
+        // Utilidad para generar IDs únicos (simple para este ejemplo)
+        const generateId = () => crypto.randomUUID();
 
+        // --- 1. ESTRUCTURAS DE DATOS INICIALES ---
+        // Estos son los datos de "fábrica" usados si localStorage está vacío.
         const initialPlayers = {
-            'player1': { id: 'player1', name: 'Alba', lastName: 'García' },
-            'player2': { id: 'player2', name: 'Benito', lastName: 'López' },
-            'player3': { id: 'player3', name: 'Carla', lastName: 'Martínez' },
-            'player4': { id: 'player4', name: 'David', lastName: 'Rodríguez' },
+            'player-pepe': { id: 'player-pepe', name: 'Pepe Pérez', course: 'Curso A' },
+            'player-juan': { id: 'player-juan', name: 'Juan Jimenez', course: 'Curso B' },
+            'player-ana': { id: 'player-ana', name: 'Ana García', course: 'Curso C' }
         };
 
-        // Función auxiliar para calcular puntos: SOLO el número de palabras (sin +2)
-        const countWords = (text) => {
-            if (!text || typeof text !== 'string') return 0;
-            // Usa una expresión regular para dividir por espacios y filtra cadenas vacías
+        const initialQuestions = [
+            { id: generateId(), title: 'Q-1', enunciado: '¿Cuántos son los Mandamientos de la ley de Dios?', respuesta: 'Los Mandamientos de la Ley de Dios son diez', puntos: 9 },
+            { id: generateId(), title: 'Q-2', enunciado: '¿Cuál es el sacramento de la penitencia?', respuesta: 'La confesión es el sacramento de la penitencia.', puntos: 8 },
+            { id: generateId(), title: 'Q-3', enunciado: '¿Qué es el pecado original?', respuesta: 'El pecado original es aquel con el que nacemos todos', puntos: 10 },
+            { id: generateId(), title: 'Q-4', enunciado: '¿Cuántas partes tiene el Catecismo?', respuesta: 'Tiene cuatro partes: Profesión de la fe, Celebración del Misterio Cristiano, Vida en Cristo y La oración cristiana.', puntos: 20 },
+            { id: generateId(), title: 'Q-5', enunciado: '¿Qué significa la palabra "Eucaristía"?', respuesta: 'La palabra Eucaristía significa acción de gracias.', puntos: 7 },
+            { id: generateId(), title: 'Q-6', enunciado: '¿Quién es el Espíritu Santo?', respuesta: 'El Espíritu Santo es la tercera persona de la Santísima Trinidad.', puntos: 12 },
+        ];
+        
+        // Estructuras de datos que se usarán en la aplicación (y se cargarán desde localStorage)
+        let players = {}; 
+        let questions = []; 
+        let hitsState = {}; // {'playerId-questionId': true/false}
+
+        // --- 2. LÓGICA DE PERSISTENCIA (localStorage) ---
+
+        /**
+         * Guarda el estado actual de la aplicación (jugadores, preguntas, aciertos) en localStorage.
+         */
+        function saveState() {
+            try {
+                // Serializa las estructuras de datos principales a JSON antes de guardar
+                localStorage.setItem('memorycat_players', JSON.stringify(players));
+                localStorage.setItem('memorycat_questions', JSON.stringify(questions));
+                localStorage.setItem('memorycat_hits', JSON.stringify(hitsState));
+                console.log('Estado guardado con éxito.');
+            } catch (e) {
+                console.error("Error al guardar el estado en localStorage", e);
+            }
+        }
+
+        /**
+         * Carga el estado de la aplicación desde localStorage o usa los datos iniciales.
+         */
+        function loadState() {
+            try {
+                const storedPlayers = localStorage.getItem('memorycat_players');
+                const storedQuestions = localStorage.getItem('memorycat_questions');
+                const storedHits = localStorage.getItem('memorycat_hits');
+
+                // Carga Jugadores
+                if (storedPlayers) {
+                    players = JSON.parse(storedPlayers);
+                } else {
+                    players = initialPlayers;
+                }
+
+                // Carga Preguntas
+                if (storedQuestions) {
+                    questions = JSON.parse(storedQuestions);
+                } else {
+                    // Si no hay preguntas, usa las iniciales y recalcula puntos
+                    questions = initialQuestions.map(q => ({
+                        ...q,
+                        // Recalcular puntos en carga si la respuesta existe
+                        puntos: q.respuesta ? countWords(q.respuesta) : q.puntos 
+                    }));
+                }
+
+                // Carga Aciertos
+                if (storedHits) {
+                    hitsState = JSON.parse(storedHits);
+                } else {
+                    hitsState = {};
+                }
+
+                console.log('Estado cargado. Jugadores:', Object.keys(players).length, 'Preguntas:', questions.length);
+
+            } catch (e) {
+                console.error("Error al cargar o parsear el estado de localStorage. Usando datos iniciales.", e);
+                // Si falla la carga, resetear a los datos iniciales
+                players = initialPlayers;
+                questions = initialQuestions;
+                hitsState = {};
+            }
+        }
+
+        /**
+         * Calcula el total de palabras de una cadena. Usado para asignar puntos.
+         * @param {string} text 
+         * @returns {number}
+         */
+        function countWords(text) {
+            // Elimina espacios extra y luego cuenta los elementos del array
             return text.trim().split(/\s+/).filter(word => word.length > 0).length;
         }
 
-        const calculatePoints = (respuesta) => countWords(respuesta);
-        
-        // Estructura de datos principal de Preguntas
-        let questions = initialQuestionsData.map(q => ({
-            ...q,
-            puntos: calculatePoints(q.respuesta) 
-        }));
-        
-        // Estructura de datos principal de Jugadores
-        let players = initialPlayers;
-        
-        // Estado de aciertos: {'playerId-questionId': true/false}
-        let hitsState = {}; 
+        // --- 3. FUNCIONES DE RENDERING Y LÓGICA DE JUEGO ---
 
-
-        // *** 2. PERSISTENCIA LOCAL (LocalStorage) ***
-        const localStorageKeyQuestions = 'memorycatQuestions';
-        const localStorageKeyPlayers = 'memorycatPlayers';
-        const localStorageKeyHits = 'memorycatHitsState';
-
-        /** Carga el estado de aciertos, preguntas y jugadores desde localStorage o inicializa. */
-        const loadState = () => {
-            // Cargar Preguntas
-            const savedQuestions = localStorage.getItem(localStorageKeyQuestions);
-            if (savedQuestions) {
-                questions = JSON.parse(savedQuestions);
-                // Asegurar que la puntuación se recalcule por si la regla ha cambiado
-                questions = questions.map(q => ({
-                    ...q,
-                    puntos: calculatePoints(q.respuesta)
-                }));
-            }
+        /**
+         * Renderiza la tabla completa (cabeceras y cuerpo)
+         */
+        function renderTable() {
+            const tableHead = document.getElementById('table-head');
+            const tableBody = document.getElementById('table-body');
             
-            // Cargar Jugadores
-            const savedPlayers = localStorage.getItem(localStorageKeyPlayers);
-            players = savedPlayers ? JSON.parse(savedPlayers) : initialPlayers;
-
-            // Cargar Aciertos
-            const savedHits = localStorage.getItem(localStorageKeyHits);
-            hitsState = savedHits ? JSON.parse(savedHits) : {};
-        };
-
-        /** Guarda el estado actual de aciertos, preguntas y jugadores en localStorage. */
-        const saveState = () => {
-            localStorage.setItem(localStorageKeyQuestions, JSON.stringify(questions));
-            localStorage.setItem(localStorageKeyPlayers, JSON.stringify(players));
-            localStorage.setItem(localStorageKeyHits, JSON.stringify(hitsState));
-        };
-
-
-        // *** 3. FUNCIONES DE RENDERING Y LÓGICA DE EDICIÓN ***
-        
-        const tableHead = document.getElementById('table-head');
-        const tableBody = document.getElementById('table-body');
-        const feedbackMessage = document.getElementById('feedback-message');
-        const loadingSpinner = document.getElementById('loading-spinner');
-        
-        // Elementos del modal de Pregunta
-        const modalQInputTitle = document.getElementById('modal-q-input-title');
-        const modalQInputEnunciado = document.getElementById('modal-q-input-enunciado');
-        const modalQInputRespuesta = document.getElementById('modal-q-input-respuesta');
-        const modalQCalculatedPoints = document.getElementById('modal-q-calculated-points');
-        
-        // Elementos del modal de Jugador 
-        const modalPInputName = document.getElementById('modal-p-input-name');
-        const modalPInputLastName = document.getElementById('modal-p-input-lastname');
-        const modalPlayerEditTitle = document.getElementById('modal-player-edit-title');
-
-
-        /** Muestra un mensaje de feedback y lo oculta después de 3 segundos. */
-        const showFeedback = (message, isError = false) => {
-            feedbackMessage.textContent = message;
-            feedbackMessage.className = `mt-2 text-center font-semibold text-sm ${isError ? 'text-red-600' : 'text-green-600'}`;
-            clearTimeout(feedbackMessage.timeout);
-            feedbackMessage.timeout = setTimeout(() => {
-                feedbackMessage.textContent = '';
-                feedbackMessage.className = 'mt-2 text-center font-semibold text-sm';
-            }, 3000);
-        };
-
-        const showLoading = (show) => {
-            loadingSpinner.classList.toggle('hidden', !show);
-        };
-
-
-        /** Renderiza la cabecera de la tabla con las preguntas. */
-        const renderTableHead = () => {
-            const headerRow = tableHead.querySelector('tr');
-            // Mantener solo la primera celda (Jugador)
-            headerRow.innerHTML = '<th scope="col" class="sticky left-0 bg-indigo-50 px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider rounded-tl-lg">Jugador</th>'; 
-
-            questions.forEach((q) => {
-                const th = document.createElement('th');
-                th.scope = 'col';
-                th.dataset.questionId = q.id; 
-                th.className = 'px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider transition duration-150 rounded-t-md';
-                
-                th.innerHTML = `
-                    <div class="flex flex-col items-center">
-                        <span class="font-bold text-sm">${q.title}</span>
-                        <span class="text-xs text-indigo-500">${q.puntos} Pts</span>
-                    </div>
+            // Renderizar Cabecera de Preguntas
+            let headHtml = '<tr><th class="sticky left-0 bg-gray-100 z-10 p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tl-xl">Jugador</th>';
+            questions.forEach((q, index) => {
+                // Usamos la letra del alfabeto como título si no tiene uno
+                const title = q.title || `Q-${index + 1}`;
+                headHtml += `
+                    <th data-question-id="${q.id}" class="cursor-pointer px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hover:bg-gray-200 transition duration-150">
+                        <span class="font-bold text-base">${title}</span><br>
+                        <span class="text-xs font-normal text-blue-600">${q.puntos} pts</span>
+                    </th>
                 `;
-                headerRow.appendChild(th);
             });
-        };
+            headHtml += '</tr>';
+            tableHead.innerHTML = headHtml;
 
-        /** Renderiza el cuerpo de la tabla con jugadores y checkboxes. */
-        const renderTableBody = () => {
-            tableBody.innerHTML = ''; // Limpiar contenido existente
-
-            // Usamos Object.values(players) para asegurar el orden
-            Object.values(players).forEach((player, playerIndex) => {
-                const tr = document.createElement('tr');
-                tr.className = playerIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50';
-
-                // Celda del Jugador (Botón para abrir Modal de Edición/Puntuación)
-                const fullName = `${player.name} ${player.lastName || ''}`.trim();
-
-                const playerCell = document.createElement('td');
-                playerCell.className = 'sticky left-0 bg-inherit px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-r border-gray-200';
-                playerCell.innerHTML = `
-                    <button class="player-button text-indigo-600 hover:text-indigo-900 font-bold p-1 rounded-md transition duration-150" data-player-id="${player.id}">
-                        ${fullName}
-                    </button>
+            // Renderizar Cuerpo de Jugadores
+            let bodyHtml = '';
+            // Convertir el objeto players a un array de valores para iterar
+            const playerArray = Object.values(players);
+            
+            playerArray.forEach(player => {
+                bodyHtml += `
+                    <tr class="hover:bg-gray-50 transition duration-150">
+                        <!-- Celda Fija del Jugador -->
+                        <td class="sticky left-0 bg-white z-10 px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 border-r border-gray-200">
+                            <button data-player-id="${player.id}" class="player-button text-left font-semibold text-indigo-600 hover:text-indigo-800 transition duration-150">
+                                ${player.name}
+                            </button>
+                            <span class="block text-xs text-gray-500">${player.course}</span>
+                        </td>
                 `;
-                tr.appendChild(playerCell);
 
-                // Celdas de Checkboxes (Aciertos)
+                // Celdas de Checkbox para las Preguntas
                 questions.forEach(q => {
-                    const cell = document.createElement('td');
-                    cell.className = 'px-4 py-2 whitespace-nowrap text-center';
-                    const hitId = `${player.id}-${q.id}`;
-                    const isChecked = hitsState[hitId] || false; // Estado del checkbox
-
-                    cell.innerHTML = `
-                        <input type="checkbox" id="${hitId}" 
-                               class="form-checkbox text-green-600 border-gray-300 focus:ring-green-500" 
-                               ${isChecked ? 'checked' : ''}>
+                    const checkboxId = `${player.id}-${q.id}`;
+                    // Determinar si el checkbox debe estar marcado usando hitsState
+                    const isChecked = hitsState[checkboxId] === true;
+                    
+                    bodyHtml += `
+                        <td class="px-4 py-3 whitespace-nowrap text-center">
+                            <input 
+                                type="checkbox" 
+                                id="${checkboxId}" 
+                                class="form-checkbox focus:ring-green-500 text-green-600 border-gray-300" 
+                                ${isChecked ? 'checked' : ''}
+                            >
+                        </td>
                     `;
-                    tr.appendChild(cell);
                 });
-
-                tableBody.appendChild(tr);
+                
+                bodyHtml += `</tr>`;
             });
-        };
-        
-        /** Renderizado completo de la interfaz */
-        const fullRender = () => {
-             renderTableHead();
-             renderTableBody();
-             saveState(); // Guardar el nuevo estado en localStorage después de cada renderizado completo
+            tableBody.innerHTML = bodyHtml;
         }
 
-        // *** 4. LÓGICA DE IMPORTACIÓN Y EXPORTACIÓN ***
-
         /**
-         * Descarga un objeto JSON como archivo en el navegador.
-         * @param {object} data El objeto de datos a exportar.
-         * @param {string} filename Nombre del archivo.
+         * Muestra el modal de puntuación del jugador.
+         * (Funciones showPlayerModal y showQuestionModal omitidas por espacio, pero se mantienen sin cambios)
          */
-        const downloadJson = (data, filename) => {
-            const json = JSON.stringify(data, null, 2);
-            const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        };
 
-        /** Manejador de la exportación: crea y descarga los tres archivos. */
-        const handleExport = () => {
-            // 1. Exportar Jugadores
-            downloadJson(players, 'memcat_jugadores.json');
-            
-            // 2. Exportar Preguntas
-            // Creamos una copia para evitar exportar las funciones/propiedades que no son parte del modelo
-            const exportQuestions = questions.map(q => ({
-                id: q.id,
-                title: q.title,
-                enunciado: q.enunciado,
-                respuesta: q.respuesta,
-                puntos: q.puntos // Esto es calculado, pero lo incluimos para claridad
-            }));
-            downloadJson(exportQuestions, 'memcat_preguntas.json');
-
-            // 3. Exportar Aciertos
-            downloadJson(hitsState, 'memcat_aciertos.json');
-
-            showFeedback('¡Datos exportados correctamente! Se han descargado 3 archivos JSON.');
-        };
-        
-        /**
-         * Manejador de la importación: lee los archivos subidos y actualiza el estado.
-         */
-        const handleImport = (event) => {
-            const files = event.target.files;
-            if (files.length === 0) return;
-            
-            showLoading(true);
-            let importedData = {
-                jugadores: null,
-                preguntas: null,
-                aciertos: null
-            };
-            let filesRead = 0;
-
-            const updateStateAndRender = () => {
-                // Verificar si todos los archivos han sido leídos (o al menos se ha intentado)
-                if (filesRead === files.length) {
-                    
-                    // 1. Actualizar Jugadores
-                    if (importedData.jugadores) {
-                        players = importedData.jugadores;
-                        console.log('Jugadores importados:', Object.keys(players).length);
-                    } else {
-                        console.warn('Archivo de jugadores no encontrado o inválido. Manteniendo datos actuales.');
-                    }
-
-                    // 2. Actualizar Preguntas
-                    if (importedData.preguntas && Array.isArray(importedData.preguntas) && importedData.preguntas.length > 0) {
-                        questions = importedData.preguntas.map(q => ({
-                            ...q,
-                            // Recalcular puntos con la regla actual para asegurar consistencia
-                            puntos: calculatePoints(q.respuesta || '') 
-                        }));
-                        console.log('Preguntas importadas:', questions.length);
-                    } else {
-                        console.warn('Archivo de preguntas no encontrado o inválido. Manteniendo datos actuales.');
-                    }
-
-                    // 3. Actualizar Aciertos
-                    if (importedData.aciertos) {
-                        hitsState = importedData.aciertos;
-                        console.log('Aciertos importados:', Object.keys(hitsState).length);
-                    } else {
-                        console.warn('Archivo de aciertos no encontrado o inválido. Manteniendo datos actuales.');
-                    }
-                    
-                    // 4. Forzar el renderizado y guardar en localStorage
-                    fullRender();
-                    showLoading(false);
-                    showFeedback('¡Importación de datos completada!', false);
-                }
-            };
-            
-            Array.from(files).forEach(file => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const json = JSON.parse(e.target.result);
-                        const fileName = file.name.toLowerCase();
-
-                        if (fileName.includes('jugadores')) {
-                            importedData.jugadores = json;
-                        } else if (fileName.includes('preguntas')) {
-                            importedData.preguntas = json;
-                        } else if (fileName.includes('aciertos')) {
-                            importedData.aciertos = json;
-                        }
-                    } catch (error) {
-                        console.error('Error al parsear el archivo JSON:', file.name, error);
-                        showFeedback(`Error al leer el archivo ${file.name}. Asegúrate de que es un JSON válido.`, true);
-                    } finally {
-                        filesRead++;
-                        updateStateAndRender();
-                    }
-                };
-                reader.onerror = () => {
-                    filesRead++;
-                    console.error('Error al leer el archivo:', file.name);
-                    updateStateAndRender();
-                };
-                reader.readAsText(file);
-            });
-        };
-        
-
-        // *** 5. LÓGICA MODALES (Sin cambios) ***
-
-        const playerEditModal = document.getElementById('player-edit-modal'); 
-        const questionModal = document.getElementById('question-modal');
-
-        const showModal = (modalElement) => {
-            modalElement.classList.remove('hidden');
-        };
-
-        const hideModal = (modalElement) => {
-            modalElement.classList.add('hidden');
-        };
-
-        /** Muestra el modal con la puntuación y campos editables del jugador. */
-        const showPlayerEditModal = (playerId) => {
+        function showPlayerModal(playerId) {
             const player = players[playerId];
             if (!player) return;
 
-            // 1. Calcular Puntuación y Detalles
-            let score = 0;
-            let hitsDetails = [];
+            const modal = document.getElementById('playerModal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalBody = document.getElementById('modal-body');
+            const modalScore = document.getElementById('modal-score');
 
-            questions.forEach(q => {
-                const hitId = `${playerId}-${q.id}`;
-                if (hitsState[hitId]) {
-                    score += q.puntos;
-                    hitsDetails.push(`✅ ${q.title} (${q.puntos} Pts)`);
+            let totalScore = 0;
+            let hitsHtml = '';
+            
+            questions.forEach((q, index) => {
+                const checkboxId = `${playerId}-${q.id}`;
+                const isHit = hitsState[checkboxId] === true;
+
+                if (isHit) {
+                    totalScore += q.puntos;
                 }
+
+                hitsHtml += `
+                    <div class="flex justify-between items-center p-2 rounded-md ${isHit ? 'bg-green-50' : 'bg-red-50'}">
+                        <span class="font-medium text-gray-700">${q.title || `Q-${index + 1}`}: ${q.enunciado}</span>
+                        <span class="text-sm font-bold ${isHit ? 'text-green-700' : 'text-red-700'}">${isHit ? `${q.puntos} Pts` : '0 Pts'}</span>
+                    </div>
+                `;
             });
 
-            // 2. Llenar el contenido del modal
-            modalPlayerEditTitle.textContent = `Editar Jugador: ${player.name} ${player.lastName}`;
-            document.getElementById('modal-p-id').value = player.id; 
+            modalTitle.textContent = `Puntuación de ${player.name} (${player.course})`;
+            modalBody.innerHTML = hitsHtml;
+            modalScore.textContent = `Puntuación Total: ${totalScore} puntos`;
             
-            // Campos de edición
-            modalPInputName.value = player.name;
-            modalPInputLastName.value = player.lastName || '';
-            
-            // Puntuación y detalles
-            document.getElementById('modal-player-score').textContent = score;
-            document.getElementById('modal-player-hits-details').innerHTML = 
-                `**Aciertos:** ${hitsDetails.length > 0 ? hitsDetails.join(', ') : 'Ninguno.'}`;
-
-            showModal(playerEditModal);
+            modal.style.display = 'flex';
         }
-        
-        /** Manejador de la edición local del jugador */
-        const handlePlayerEditSubmit = (event) => {
-            event.preventDefault();
 
-            const playerId = document.getElementById('modal-p-id').value;
-            const updatedName = modalPInputName.value.trim();
-            const updatedLastName = modalPInputLastName.value.trim();
+        function showQuestionModal(questionId) {
+            const question = questions.find(q => q.id === questionId);
+            if (!question) return;
 
-            if (players[playerId]) {
-                // 1. Actualizar el objeto en la estructura players
-                players[playerId].name = updatedName;
-                players[playerId].lastName = updatedLastName;
+            const modal = document.getElementById('questionModal');
+            document.getElementById('modal-q-title').textContent = question.title || 'Detalle de Pregunta';
+            document.getElementById('modal-q-enunciado').textContent = question.enunciado;
+            document.getElementById('modal-q-respuesta').textContent = question.respuesta;
+            document.getElementById('modal-q-puntos').textContent = `Valor: ${question.puntos} puntos`;
+            
+            modal.style.display = 'flex';
+        }
 
-                // 2. Re-renderizar la tabla para reflejar los cambios
-                fullRender();
-                
-                // 3. Ocultar el modal
-                hideModal(playerEditModal);
-                
-                showFeedback('Datos del jugador guardados.');
-            } else {
-                console.error('No se pudo encontrar el jugador para actualizar.');
+        function hideModal(modalElement) {
+            modalElement.style.display = 'none';
+        }
+
+
+        // --- 4. FUNCIONES DEL MODAL DE DATOS Y HERRAMIENTAS (MODULARES) ---
+
+        function showToolsStatus(message, type = 'success') {
+            const statusElement = document.getElementById('tools-status-message');
+            statusElement.textContent = message;
+            statusElement.className = 'mt-4 p-3 rounded-lg transition duration-300';
+            statusElement.classList.remove('hidden');
+
+            if (type === 'success') {
+                statusElement.classList.add('bg-green-100', 'text-green-800');
+            } else if (type === 'error') {
+                statusElement.classList.add('bg-red-100', 'text-red-800');
+            }
+            
+            setTimeout(() => {
+                statusElement.classList.add('hidden');
+            }, 5000);
+        }
+
+        /**
+         * Borra SÓLO el estado de aciertos y actualiza la UI.
+         */
+        function clearHits() {
+            if (!window.confirm("¿Estás seguro de que quieres borrar TODOS los aciertos? Esta acción es irreversible.")) {
+                return;
+            }
+            hitsState = {}; // Reinicia el objeto de aciertos
+            saveState();
+            renderTable(); // Vuelve a dibujar la tabla
+            showToolsStatus('Aciertos borrados con éxito. La tabla se ha reiniciado.');
+        }
+
+        /**
+         * Reinicia la aplicación a la configuración de fábrica (borra todo).
+         */
+        function resetToFactory() {
+            if (!window.confirm("¡ADVERTENCIA! ¿Estás absolutamente seguro de que quieres borrar TODA la configuración (jugadores, preguntas y aciertos) y volver a los datos de fábrica?")) {
+                return;
+            }
+
+            // Borrar todo del localStorage
+            localStorage.removeItem('memorycat_players');
+            localStorage.removeItem('memorycat_questions');
+            localStorage.removeItem('memorycat_hits');
+            
+            // Recargar el estado inicial
+            loadState();
+            renderTable();
+            // Ocultar el modal de herramientas
+            hideModal(document.getElementById('dataToolsModal'));
+            showToolsStatus('La aplicación ha sido restablecida a la configuración de fábrica. Por favor, recargue la página si encuentra inconsistencias.', 'error');
+        }
+
+
+        /**
+         * Exporta un tipo de dato específico a un archivo JSON.
+         * @param {string} dataType - 'players', 'questions' o 'hitsState'.
+         */
+        function exportData(dataType) {
+            let dataToExport;
+            let filenamePrefix;
+
+            switch(dataType) {
+                case 'players':
+                    dataToExport = players;
+                    filenamePrefix = 'jugadores';
+                    break;
+                case 'questions':
+                    dataToExport = questions;
+                    filenamePrefix = 'preguntas';
+                    break;
+                case 'hitsState':
+                    dataToExport = hitsState;
+                    filenamePrefix = 'aciertos';
+                    break;
+                default:
+                    showToolsStatus('Tipo de dato a exportar no válido.', 'error');
+                    return;
+            }
+
+            try {
+                const dataStr = JSON.stringify(dataToExport, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `memorycat_${filenamePrefix}_${new Date().toISOString().substring(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToolsStatus(`Datos de ${filenamePrefix.toUpperCase()} exportados con éxito.`);
+            } catch (e) {
+                console.error(`Error al exportar los datos de ${dataType}:`, e);
+                showToolsStatus(`Error al exportar los datos de ${filenamePrefix.toUpperCase()}.`, 'error');
             }
         }
 
+        /**
+         * Importa datos desde un archivo JSON para un tipo específico.
+         * @param {Event} event 
+         */
+        function importData(event) {
+            const fileInput = event.target;
+            const dataType = fileInput.dataset.type;
+            const file = fileInput.files[0];
+            
+            if (!file) return;
 
-        /** Muestra el modal de edición de la Pregunta. */
-        const showQuestionModal = (questionId) => {
-            const q = questions.find(q => q.id === questionId);
-            if (!q) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    
+                    let dataKey;
+                    let successMessage;
 
-            // 1. Cargar datos en el formulario
-            document.getElementById('modal-q-id').value = q.id;
-            document.getElementById('modal-q-title').textContent = `Editar: ${q.title}`;
-            modalQInputTitle.value = q.title;
-            modalQInputEnunciado.value = q.enunciado;
-            modalQInputRespuesta.value = q.respuesta;
-            modalQCalculatedPoints.textContent = q.puntos; 
+                    switch(dataType) {
+                        case 'players':
+                            if (typeof importedData !== 'object' || Array.isArray(importedData)) throw new Error("Formato JSON incorrecto para Jugadores (esperado: Objeto).");
+                            players = importedData;
+                            dataKey = 'memorycat_players';
+                            successMessage = 'Jugadores';
+                            break;
+                        case 'questions':
+                            if (!Array.isArray(importedData)) throw new Error("Formato JSON incorrecto para Preguntas (esperado: Array).");
+                            questions = importedData;
+                            // Recalcular puntos al importar preguntas
+                            questions.forEach(q => {
+                                q.puntos = q.respuesta ? countWords(q.respuesta) : (q.puntos || 1); 
+                            });
+                            dataKey = 'memorycat_questions';
+                            successMessage = 'Preguntas';
+                            break;
+                        case 'hitsState':
+                            if (typeof importedData !== 'object' || Array.isArray(importedData)) throw new Error("Formato JSON incorrecto para Aciertos (esperado: Objeto).");
+                            hitsState = importedData;
+                            dataKey = 'memorycat_hits';
+                            successMessage = 'Aciertos';
+                            break;
+                        default:
+                            throw new Error("Tipo de dato de importación desconocido.");
+                    }
 
-            // 2. Listener para actualizar puntos en tiempo real (feedback)
-            const updatePoints = () => {
-                const newResponse = modalQInputRespuesta.value;
-                modalQCalculatedPoints.textContent = calculatePoints(newResponse); 
+                    // Guardar en localStorage
+                    localStorage.setItem(dataKey, JSON.stringify(importedData));
+                    
+                    // Re-renderizar la tabla si se importan jugadores o preguntas
+                    if (dataType === 'players' || dataType === 'questions' || dataType === 'hitsState') {
+                        renderTable();
+                    }
+                    
+                    showToolsStatus(`Datos de ${successMessage.toUpperCase()} importados y guardados con éxito.`);
+                    fileInput.value = ''; // Resetear el input file
+                } catch (error) {
+                    console.error("Error al importar o parsear el archivo:", error);
+                    showToolsStatus(`Error al importar ${dataType.toUpperCase()}: ${error.message || 'El archivo no es un JSON válido.'}`, 'error');
+                    fileInput.value = ''; // Resetear el input file incluso en error
+                }
             };
-            modalQInputRespuesta.removeEventListener('input', updatePoints); 
-            modalQInputRespuesta.addEventListener('input', updatePoints); 
-
-            showModal(questionModal);
+            reader.readAsText(file);
         }
-        
-        /** Manejador de la edición local de la pregunta */
-        const handleQuestionEditSubmit = (event) => {
-            event.preventDefault();
 
-            const questionId = document.getElementById('modal-q-id').value;
-            const updatedTitle = modalQInputTitle.value.trim();
-            const updatedEnunciado = modalQInputEnunciado.value.trim();
-            const updatedRespuesta = modalQInputRespuesta.value.trim();
 
-            // Buscar el índice de la pregunta
-            const questionIndex = questions.findIndex(q => q.id === questionId);
+        // --- 5. GESTIÓN DE PESTAÑAS DEL MODAL DE HERRAMIENTAS ---
 
-            if (questionIndex !== -1) {
-                // 1. Actualizar el objeto
-                questions[questionIndex].title = updatedTitle;
-                questions[questionIndex].enunciado = updatedEnunciado;
-                questions[questionIndex].respuesta = updatedRespuesta;
-                questions[questionIndex].puntos = calculatePoints(updatedRespuesta);
+        /**
+         * Cambia la pestaña activa en el modal de herramientas.
+         * @param {string} targetTabName 
+         */
+        function changeTab(targetTabName) {
+            const tabButtons = document.querySelectorAll('#dataToolsModal .tab-button');
+            const tabContents = document.querySelectorAll('#dataToolsModal .tab-content');
 
-                // 2. Re-renderizar la tabla 
-                fullRender();
-                
-                // 3. Ocultar el modal
-                hideModal(questionModal);
-                
-                showFeedback('Datos de la pregunta guardados.');
-            } else {
-                console.error('No se pudo encontrar la pregunta para actualizar.');
+            tabButtons.forEach(btn => {
+                const isActive = btn.dataset.tab === targetTabName;
+                btn.classList.toggle('active', isActive);
+            });
+
+            tabContents.forEach(content => {
+                const isActive = content.id === `tab-content-${targetTabName}`;
+                content.style.display = isActive ? 'block' : 'none';
+            });
+
+            // Lógica para renderizar listas al activar
+            if (targetTabName === 'jugadores') {
+                renderPlayersList();
+            } else if (targetTabName === 'preguntas') {
+                 renderQuestionsList();
             }
         }
 
+        /**
+         * Renderiza la lista de jugadores dentro del modal de herramientas.
+         */
+        function renderPlayersList() {
+            const listContainer = document.getElementById('players-list-display');
+            const playerArray = Object.values(players);
+            
+            if (playerArray.length === 0) {
+                listContainer.innerHTML = '<p class="text-gray-500 italic p-4">No hay jugadores definidos.</p>';
+                return;
+            }
 
-        // *** 6. INICIALIZACIÓN Y LISTENERS PRINCIPALES ***
+            let html = playerArray.map(player => `
+                <div class="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div>
+                        <p class="font-bold text-gray-800">${player.name}</p>
+                        <p class="text-sm text-gray-500">${player.course} (ID: ${player.id.substring(0, 8)}...)</p>
+                    </div>
+                    <div class="space-x-2">
+                        <!-- Botones de Editar y Eliminar (Pendientes de implementar funcionalidad) -->
+                        <button class="text-blue-500 hover:text-blue-700 transition" title="Editar"><i class="fas fa-edit"></i></button>
+                        <button class="text-red-500 hover:text-red-700 transition" title="Eliminar"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+
+            listContainer.innerHTML = html;
+        }
+
+        /**
+         * Renderiza la lista de preguntas dentro del modal de herramientas.
+         */
+        function renderQuestionsList() {
+            const listContainer = document.getElementById('questions-list-display');
+            
+            if (questions.length === 0) {
+                listContainer.innerHTML = '<p class="text-gray-500 italic p-4">No hay preguntas definidas.</p>';
+                return;
+            }
+
+            let html = questions.map(q => `
+                <div class="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div>
+                        <p class="font-bold text-gray-800">${q.title}</p>
+                        <p class="text-sm text-gray-500 truncate w-64">${q.enunciado}</p>
+                        <p class="text-xs text-blue-600">${q.puntos} puntos</p>
+                    </div>
+                    <div class="space-x-2">
+                        <!-- Botones de Editar y Eliminar (Pendientes de implementar funcionalidad) -->
+                        <button class="text-blue-500 hover:text-blue-700 transition" title="Editar"><i class="fas fa-edit"></i></button>
+                        <button class="text-red-500 hover:text-red-700 transition" title="Eliminar"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+
+            listContainer.innerHTML = html;
+        }
+
+        // --- 6. INICIALIZACIÓN Y LISTENERS ---
 
         document.addEventListener('DOMContentLoaded', () => {
-            
-            // 1. Cargar el estado guardado y realizar el renderizado inicial
-            loadState();
-            fullRender();
+            // Inicializar el estado de los datos
+            loadState(); 
+            // Renderizar la tabla inicial
+            renderTable();
 
+            const tableBody = document.getElementById('table-body');
+            const tableHead = document.getElementById('table-head');
+            const playerModal = document.getElementById('playerModal');
+            const questionModal = document.getElementById('questionModal');
+            const dataToolsModal = document.getElementById('dataToolsModal');
 
-            // --- LISTENERS DE INTERFAZ Y LÓGICA ---
+            // --- LISTENERS GENERALES ---
 
-            // 1. Escucha cambios en checkboxes para guardar estado (delegación de eventos)
+            // 1. Escucha cambios en los Checkboxes (delegación de eventos)
             tableBody.addEventListener('change', (event) => {
                 if (event.target.type === 'checkbox') {
                     const checkbox = event.target;
+                    // El ID del checkbox es playerId-questionId
                     hitsState[checkbox.id] = checkbox.checked; 
-                    saveState(); 
-                    
-                    // Si el modal de jugador está abierto, actualiza su puntuación
-                    const [playerId] = checkbox.id.split('-');
-                    if (!playerEditModal.classList.contains('hidden')) {
-                        showPlayerEditModal(playerId); 
-                    }
+                    saveState(); // Guarda el estado en localStorage
                 }
             });
 
-            // 2. Escucha clics en botones de jugador para abrir el modal de EDICIÓN/PUNTUACIÓN
+            // 2. Escucha clics en botones de jugador para ver la PUNTUACIÓN
             tableBody.addEventListener('click', (event) => {
                 const button = event.target.closest('.player-button');
-                if (button) showPlayerEditModal(button.dataset.playerId);
+                if (button) showPlayerModal(button.dataset.playerId);
             });
 
-            // 3. Escucha clics en la cabecera para abrir el modal de EDICIÓN de Pregunta
+            // 3. Escucha clics en la cabecera para ver detalles de la Pregunta
             tableHead.addEventListener('click', (event) => {
                 const header = event.target.closest('th[data-question-id]');
                 if (header) showQuestionModal(header.dataset.questionId);
             });
-            
-            // 4. Listener para la EXPORTACIÓN
-            document.getElementById('export-data').addEventListener('click', handleExport);
 
-            // 5. Listener para la IMPORTACIÓN (el botón simula un click en el input)
-            document.getElementById('import-data').addEventListener('click', () => {
-                document.getElementById('import-file-input').click();
-            });
-            
-            // 6. Listener para el cambio real del archivo de IMPORTACIÓN
-            document.getElementById('import-file-input').addEventListener('change', handleImport);
-
-            // 7. Listeners de formularios de Edición
-            document.getElementById('player-edit-form').addEventListener('submit', handlePlayerEditSubmit);
-            document.getElementById('question-edit-form').addEventListener('submit', handleQuestionEditSubmit);
-
-            // 8. Listeners para cerrar modales
-            document.getElementById('modal-p-close').addEventListener('click', () => hideModal(playerEditModal));
-            document.getElementById('modal-q-close').addEventListener('click', (e) => {
-                e.preventDefault(); 
-                hideModal(questionModal);
-            });
-
-            // 9. Cerrar al hacer clic en el fondo
-            playerEditModal.addEventListener('click', (e) => {
-                 if (e.target === playerEditModal) hideModal(playerEditModal);
+            // 4. Listeners para cerrar modales de Jugador y Pregunta
+            document.getElementById('modal-close').addEventListener('click', () => hideModal(playerModal));
+            document.getElementById('modal-q-close').addEventListener('click', () => hideModal(questionModal));
+            playerModal.addEventListener('click', (e) => {
+                 if (e.target === playerModal) hideModal(playerModal);
             });
             questionModal.addEventListener('click', (e) => {
                  if (e.target === questionModal) hideModal(questionModal);
             });
+
+
+            // --- LISTENERS DEL MODAL DE HERRAMIENTAS (MODULARES) ---
+
+            // A. Botón de acceso al modal de Herramientas
+            document.getElementById('data-tools-button').addEventListener('click', () => {
+                dataToolsModal.style.display = 'flex';
+                // Asegurar que la pestaña de jugadores se muestre al abrir
+                changeTab('jugadores'); 
+            });
+
+            // B. Cerrar modal de Herramientas
+            document.getElementById('modal-tools-close').addEventListener('click', () => hideModal(dataToolsModal));
+            dataToolsModal.addEventListener('click', (e) => {
+                 if (e.target === dataToolsModal) hideModal(dataToolsModal);
+            });
+
+            // C. Navegación por Pestañas
+            document.getElementById('tab-jugadores-button').addEventListener('click', () => changeTab('jugadores'));
+            document.getElementById('tab-preguntas-button').addEventListener('click', () => changeTab('preguntas'));
+            document.getElementById('tab-utilidades-button').addEventListener('click', () => changeTab('utilidades'));
+            
+            // D. Herramientas de Mantenimiento (Pestaña Utilidades)
+
+            // Exportar (Delegación de eventos para los 3 botones)
+            document.querySelectorAll('.export-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    exportData(e.target.dataset.type);
+                });
+            });
+
+            // Importar (Delegación de eventos para los 3 inputs de archivo)
+            document.querySelectorAll('.import-file-input').forEach(input => {
+                input.addEventListener('change', importData);
+            });
+
+            document.getElementById('clear-hits-button').addEventListener('click', clearHits);
+            document.getElementById('reset-factory-button').addEventListener('click', resetToFactory);
         });
 
     </script>
