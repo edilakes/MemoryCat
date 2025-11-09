@@ -11,9 +11,9 @@
     - FILAS: Jugadores.
     - COLUMNAS: Preguntas (Carga Híbrida: Firestore si está disponible, si no, estáticas).
     - INTERSECCIÓN: Checkboxes (aciertos/fallos).
-    - PERSISTENCIA DE ACIERTOS: La clave es PLAYER_ID-QUESTION_ID (ID estable).
     - PUNTUACIÓN: Se calcula sumando el número de palabras de la respuesta de cada pregunta acertada.
     - PERSISTENCIA: Jugadores y Aciertos usan localStorage.
+    - GESTOR CRUD: Implementación completa de CRUD para la colección 'preguntas' de Firestore.
     -->
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -75,6 +75,11 @@
             opacity: 1;
             pointer-events: auto;
         }
+
+        /* Estilos específicos para la lista del gestor */
+        .question-item:nth-child(even) {
+            background-color: #f7fafc; /* gray-50 */
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
@@ -83,8 +88,8 @@
         
         <!-- Contenedor del Título y el Botón de Ajustes -->
         <div class="flex justify-between items-center mb-6">
-            <!-- Botón de Ajustes -->
-            <button id="settings-btn" class="text-gray-500 hover:text-gray-700 p-2 rounded-full transition duration-150 ease-in-out" aria-label="Ajustes de Importación y Exportación">
+            <!-- Botón de Ajustes (Abre el Gestor/Modal CRUD) -->
+            <button id="settings-btn" class="text-gray-500 hover:text-gray-700 p-2 rounded-full transition duration-150 ease-in-out" aria-label="Ajustes y Gestor de Preguntas">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
                     <circle cx="12" cy="12" r="3"></circle>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -104,7 +109,7 @@
         
         <!-- Mensaje de Cero Preguntas -->
         <div id="no-questions-message" class="text-center py-8 text-xl font-medium text-gray-500 border-2 border-dashed border-gray-300 rounded-lg hidden">
-            No hay preguntas cargadas (modo estático).
+            No hay preguntas cargadas.
         </div>
 
         <!-- TABLA DE SEGUIMIENTO (El corazón de la app) -->
@@ -124,7 +129,7 @@
 
     </div>
 
-    <!-- Modal (Ficha del Jugador) - Detalles y Puntuación -->
+    <!-- Modal (Ficha del Jugador) - Detalles y Puntuación (sin cambios) -->
     <div id="player-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm transform transition-all scale-100" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-4">
@@ -142,7 +147,7 @@
         </div>
     </div>
     
-    <!-- Modal (Ficha de Pregunta) - Incluye el título (no editable), enunciado y puntos -->
+    <!-- Modal (Ficha de Pregunta) - Detalles de pregunta (sin cambios) -->
     <div id="question-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog" data-editing-question-id="">
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md transform transition-all scale-100" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-4">
@@ -173,43 +178,112 @@
         </div>
     </div>
 
-    <!-- Modal (Ajustes: Importar/Exportar) -->
+    <!-- Modal (Gestor de Preguntas: CRUD / Importación / Exportación) -->
     <div id="settings-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg transform transition-all scale-100" onclick="event.stopPropagation()">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Importar / Exportar Preguntas</h2>
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-2xl transform transition-all scale-100 h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-6 border-b pb-3">
+                <h2 class="text-2xl font-bold text-gray-800">Gestor de Preguntas</h2>
                 <button id="modal-settings-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
             </div>
             
-            <!-- EXPORTAR -->
-            <div class="mb-6 border-b pb-4">
-                <h3 class="text-xl font-semibold mb-2 text-gray-700">1. Exportar Preguntas Actuales</h3>
-                <p class="text-gray-600 text-sm mb-3">Copia las preguntas actuales (ya sean de Firestore o estáticas) como un JSON para guardarlas.</p>
-                <button id="export-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Copiar JSON de Preguntas</button>
+            <div id="settings-mode-warning" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-lg font-medium hidden">
+                 Advertencia: La aplicación está en modo estático (sin Firebase). El Gestor CRUD está deshabilitado.
             </div>
 
-            <!-- IMPORTAR -->
-            <div class="mb-4">
-                <h3 class="text-xl font-semibold mb-2 text-gray-700">2. Importar Preguntas (JSON)</h3>
-                <p class="text-sm text-red-600 mb-2">Advertencia: Las preguntas importadas se guardarán en Firestore (si está conectado) y actualizarán la tabla.</p>
-                <textarea id="import-json-area" rows="6" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" placeholder='[{"id": "qX", "title": "...", "enunciado": "...", "respuesta": "..."}]'></textarea>
-                <button id="import-btn" class="w-full mt-3 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Importar y Actualizar Firestore</button>
-            </div>
+            <!-- Contenedores del Gestor -->
+            <div class="flex-grow overflow-y-auto pr-2">
+                
+                <!-- Importación / Exportación (Se mantiene, pero se envuelve en un toggle) -->
+                <div class="mb-6 border p-4 rounded-lg bg-gray-50">
+                    <h3 class="text-xl font-semibold mb-2 text-gray-700 cursor-pointer flex justify-between items-center" onclick="document.getElementById('ie-content').classList.toggle('hidden')">
+                         <span>Importación / Exportación JSON</span>
+                         <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </h3>
+                    <div id="ie-content" class="hidden pt-2">
+                         <!-- EXPORTAR -->
+                        <div class="mb-4">
+                            <button id="export-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Copiar JSON de Preguntas</button>
+                        </div>
 
-            <div id="settings-message" class="mt-4 p-3 rounded-lg text-sm hidden"></div>
+                        <!-- IMPORTAR -->
+                        <div class="mb-4">
+                            <p class="text-sm text-red-600 mb-2">Advertencia: Las preguntas importadas se guardarán en Firestore.</p>
+                            <textarea id="import-json-area" rows="3" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" placeholder='[{"id": "qX", "title": "...", "enunciado": "...", "respuesta": "..."}]'></textarea>
+                            <button id="import-btn" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Importar y Actualizar Firestore</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GESTOR CRUD -->
+                <h3 class="text-xl font-semibold mb-3 text-gray-700">Gestión de Preguntas (Firestore CRUD)</h3>
+                
+                <button id="new-question-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 mb-4 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Nueva Pregunta
+                </button>
+                
+                <!-- Lista de Preguntas (READ) -->
+                <div id="question-list-container" class="border border-gray-300 rounded-lg divide-y divide-gray-200 min-h-[100px] mb-4">
+                    <!-- Las preguntas se inyectarán aquí con renderQuestionList() -->
+                    <div class="p-4 text-center text-gray-500" id="list-placeholder">Cargando preguntas o no hay conexión.</div>
+                </div>
+            </div>
+            <!-- FIN del área scrollable -->
+
+            <div id="settings-message" class="mt-4 p-3 rounded-lg text-sm hidden flex-shrink-0"></div>
+        </div>
+    </div>
+    
+    <!-- Modal (Formulario CRUD: Crear/Editar) -->
+    <div id="crud-modal" class="modal fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg transform transition-all scale-100" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="crud-modal-title" class="text-2xl font-bold text-gray-800"></h2>
+                <button id="crud-modal-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
+            </div>
+            
+            <form id="crud-form" class="space-y-4">
+                <!-- Campo de ID (solo para mostrar en modo Edición) -->
+                <div id="crud-id-group" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700">ID del Documento (Firestore)</label>
+                    <input type="text" id="crud-id" class="mt-1 block w-full bg-gray-100 border border-gray-300 rounded-md p-2" readonly>
+                </div>
+                
+                <!-- Campo Título -->
+                <div>
+                    <label for="crud-title" class="block text-sm font-medium text-gray-700">Título Corto (Ej: Q1: Nombre)</label>
+                    <input type="text" id="crud-title" required class="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                
+                <!-- Campo Enunciado -->
+                <div>
+                    <label for="crud-enunciado" class="block text-sm font-medium text-gray-700">Enunciado de la Pregunta</label>
+                    <textarea id="crud-enunciado" rows="3" required class="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                </div>
+                
+                <!-- Campo Respuesta -->
+                <div>
+                    <label for="crud-respuesta" class="block text-sm font-medium text-gray-700">Respuesta Clave (Para cálculo de puntos)</label>
+                    <textarea id="crud-respuesta" rows="3" required class="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                    <p class="mt-1 text-xs text-gray-500">Los puntos se calculan automáticamente con el número de palabras de la respuesta.</p>
+                </div>
+                
+                <button type="submit" id="crud-save-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
+                    Guardar
+                </button>
+            </form>
         </div>
     </div>
 
 
     <script type="module">
-        // Importaciones de Firebase (se cargarán solo si __firebase_config existe)
+        // Importaciones de Firebase 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Añadimos doc y setDoc para la escritura de datos
-        import { getFirestore, collection, onSnapshot, setLogLevel, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Añadimos deleteDoc para la operación D (Delete) y getDocs para el UUID
+        import { getFirestore, collection, onSnapshot, setLogLevel, doc, setDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Configuración y Variables de Firebase (Obligatorias) ---
-        // Verificamos si las variables de Firebase existen para determinar el modo de carga
         const hasFirebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config !== 'null';
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = hasFirebaseConfig ? JSON.parse(__firebase_config) : null;
@@ -221,39 +295,40 @@
         let userId = null; 
         let isAuthReady = false; 
         
-        // --- Datos Estáticos de Reserva ---
-        
-        // Datos de preguntas de reserva (Fallback)
+        // La fuente de la verdad para las preguntas.
         const defaultQuestionsData = [
             { id: 'q1', title: 'Q1: CSS Grid', enunciado: 'Explica brevemente qué problema resuelve CSS Grid Layout.', respuesta: 'CSS Grid resuelve el problema de la maquetación bidimensional compleja, permitiendo al desarrollador definir filas y columnas de manera precisa para el diseño de toda una página o componente.', puntos: 25 },
             { id: 'q2', title: 'Q2: Scope JS', enunciado: '¿Cuál es la principal diferencia entre `let` y `var` en JavaScript respecto al scope?', respuesta: 'La principal diferencia es que var tiene un scope de función o global, mientras que let tiene un scope de bloque, limitado a las llaves {} donde es declarado.', puntos: 28 },
             { id: 'q3', title: 'Q3: HTTP Status', enunciado: '¿Qué significa el código de estado HTTP 403?', respuesta: 'El código 403 Forbidden indica que el servidor se niega a autorizar la petición, a pesar de que la sintaxis de la petición es correcta. Esto generalmente se debe a permisos insuficientes o configuración de seguridad.', puntos: 40 },
-            { id: 'q4', title: 'Q4: Git Rebase', enunciado: '¿Para qué se utiliza el comando `git rebase`?', respuesta: 'Git rebase se utiliza para integrar cambios de una rama a otra, reescribiendo el historial de commits y haciendo que parezca que los cambios se aplicaron secuencialmente, lo que resulta en un historial de proyecto más limpio y lineal.', puntos: 45 },
-            { id: 'q5', title: 'Q5: SPA', enunciado: 'Define el concepto de Single Page Application (SPA).', respuesta: 'Una Single Page Application o SPA es una aplicación web que carga una única página HTML y actualiza dinámicamente el contenido principal mediante JavaScript, sin requerir una recarga completa de la página.', puntos: 30 },
-            { id: 'q6', title: 'Q6: NoSQL', enunciado: 'Menciona una ventaja clave de las bases de datos NoSQL sobre las relacionales.', respuesta: 'Una ventaja clave de NoSQL es la escalabilidad horizontal y la flexibilidad del esquema, lo que permite manejar grandes volúmenes de datos no estructurados o semiestructurados y distribuir la carga fácilmente entre múltiples servidores.', puntos: 40 },
         ];
 
-        let questions = defaultQuestionsData; // Inicializamos con las preguntas estáticas
+        let questions = defaultQuestionsData; 
         
-        // La fuente de datos de los jugadores (OBJECT). Se queda en localStorage por ahora.
+        // Jugadores y aciertos (se quedan en localStorage)
         let players = {
             'player-pepe': { id: 'player-pepe', name: 'Pepe Pérez', course: 'Curso A' },
             'player-juan': { id: 'player-juan', name: 'Juan Jimenez', course: 'Curso B' },
             'player-ana': { id: 'player-ana', name: 'Ana García', course: 'Curso C' }
         };
-
-        // Estado de aciertos guardado como { playerId-questionId: true/false }. Se queda en localStorage por ahora.
         let hitsState = {}; 
 
+        // Variables para la gestión CRUD
+        let currentQuestionToEdit = null;
+        
         // --- Elementos de UI ---
         const tableHeadRow = document.querySelector('table thead tr');
         const tableBody = document.getElementById('player-grid');
         const playerModal = document.getElementById('player-modal');
         const questionModal = document.getElementById('question-modal');
         const settingsModal = document.getElementById('settings-modal'); 
+        const crudModal = document.getElementById('crud-modal');
         const loadingIndicator = document.getElementById('loading-indicator');
         const noQuestionsMessage = document.getElementById('no-questions-message');
         const settingsMessage = document.getElementById('settings-message');
+        const questionListContainer = document.getElementById('question-list-container');
+        const newQuestionBtn = document.getElementById('new-question-btn');
+        const settingsModeWarning = document.getElementById('settings-mode-warning');
+
 
         // --- Utilidades ---
         function countWords(str) {
@@ -279,17 +354,11 @@
         const HITS_KEY = 'memorycat_hits';
         const PLAYERS_KEY = 'memorycat_players'; 
 
-        /**
-         * Guarda el estado de los aciertos y los jugadores en localStorage.
-         */
         function saveLocalState() {
             localStorage.setItem(HITS_KEY, JSON.stringify(hitsState));
             localStorage.setItem(PLAYERS_KEY, JSON.stringify(players)); 
         }
 
-        /**
-         * Carga el estado de los aciertos y los jugadores desde localStorage.
-         */
         function loadLocalState() {
             const storedPlayers = localStorage.getItem(PLAYERS_KEY);
             if (storedPlayers) {
@@ -313,9 +382,6 @@
             return null;
         }
 
-        /**
-         * Calcula la puntuación total de un jugador.
-         */
         function calculatePlayerScore(playerId) {
             const playerHitIds = Object.keys(hitsState).filter(key => key.startsWith(playerId + '-'));
             let score = 0;
@@ -335,20 +401,16 @@
 
         // --- Renderizado y Lógica de Puntuación ---
 
-        
-        /** Muestra un modal */
         function showModal(modalElement) {
             modalElement.classList.add('open');
             modalElement.setAttribute('aria-hidden', 'false');
         }
 
-        /** Oculta un modal */
         function hideModal(modalElement) {
             modalElement.classList.remove('open');
             modalElement.setAttribute('aria-hidden', 'true');
         }
         
-        /** Renderiza la cabecera de la tabla */
         function initializeAndRenderHeader() {
             tableHeadRow.innerHTML = '';
             
@@ -361,12 +423,14 @@
             tableHeadRow.innerHTML = headerHTML;
         }
 
-        /** Renderiza las filas de la tabla (Jugadores y Checkboxes) */
         function renderTable() {
             tableBody.innerHTML = ''; 
             
             if (questions.length === 0) {
                 noQuestionsMessage.classList.remove('hidden');
+                noQuestionsMessage.textContent = isAuthReady 
+                    ? 'No hay preguntas cargadas en Firestore. Usa el Gestor para añadir una.'
+                    : 'No hay preguntas cargadas (modo estático).';
                 return;
             } else {
                  noQuestionsMessage.classList.add('hidden');
@@ -398,21 +462,18 @@
             });
         }
         
-        /** Actualiza el elemento SPAN de puntuación para un jugador específico en la tabla. */
         function updatePlayerScoreDisplay(playerId) {
             const score = calculatePlayerScore(playerId);
             const scoreSpan = document.getElementById(`score-${playerId}`);
             if (scoreSpan) {
                 scoreSpan.textContent = `${score} Pts`;
             }
-            // También actualizamos el modal si está abierto
             const modalName = document.getElementById('modal-name');
             if(playerModal.classList.contains('open') && modalName && modalName.textContent.startsWith(players[playerId].name)) {
                 document.getElementById('modal-points').textContent = score; 
             }
         }
 
-        /** Muestra y calcula la puntuación del jugador en el modal. */
         function showPlayerModal(playerId) {
              const player = players[playerId];
              if (!player) return;
@@ -425,7 +486,6 @@
             showModal(playerModal);
         }
 
-        /** Muestra el modal con los detalles de la pregunta. */
         function showQuestionModal(questionId) {
             const question = questions.find(q => q.id === questionId);
             if (!question) return;
@@ -440,15 +500,15 @@
             showModal(questionModal);
         }
 
-        // --- Lógica de Firebase y Persistencia Remota ---
+        // --- Lógica de Firebase (CRUD) ---
         
         /**
-         * Guarda una sola pregunta en Firestore.
-         * @param {Object} question - La pregunta a guardar.
+         * Operación C/U: Guarda/Actualiza una pregunta en Firestore.
          */
         async function saveQuestionToFirestore(question) {
             if (!db || !isAuthReady) {
-                console.warn("Firestore no está listo. La pregunta no se guardó en la DB.");
+                console.error("Firestore no está listo. La pregunta no se guardó.");
+                showSettingsMessage("Error de conexión: Firestore no está disponible.", 'error');
                 return;
             }
 
@@ -456,13 +516,43 @@
             const { puntos, ...dataToSave } = question; 
             
             try {
+                // Usamos el ID de la pregunta como ID del documento
                 const questionDocRef = doc(db, `artifacts/${appId}/public/data/preguntas`, question.id);
+                // setDoc crea si no existe o sobrescribe/fusiona si ya existe (Update/Create)
                 await setDoc(questionDocRef, dataToSave, { merge: true });
                 console.log(`Pregunta ${question.id} guardada/actualizada en Firestore.`);
+                showSettingsMessage(`Pregunta "${question.title}" guardada con éxito.`, 'success');
+                hideModal(crudModal);
             } catch (error) {
                 console.error(`Error al guardar la pregunta ${question.id} en Firestore:`, error);
+                showSettingsMessage(`Error al guardar: ${error.message}`, 'error');
             }
         }
+        
+        /**
+         * Operación D: Borra una pregunta de Firestore.
+         */
+        async function deleteQuestionFromFirestore(questionId) {
+            if (!db || !isAuthReady) {
+                showSettingsMessage("Error de conexión: Firestore no está disponible para borrar.", 'error');
+                return;
+            }
+            
+            if (!confirm(`¿Estás seguro de que quieres borrar la pregunta con ID: ${questionId}? Esto es irreversible y afectará a la puntuación de todos los jugadores.`)) {
+                return;
+            }
+
+            try {
+                const questionDocRef = doc(db, `artifacts/${appId}/public/data/preguntas`, questionId);
+                await deleteDoc(questionDocRef);
+                console.log(`Pregunta ${questionId} eliminada de Firestore.`);
+                showSettingsMessage(`Pregunta eliminada con éxito.`, 'success');
+            } catch (error) {
+                console.error(`Error al borrar la pregunta ${questionId} de Firestore:`, error);
+                showSettingsMessage(`Error al borrar: ${error.message}`, 'error');
+            }
+        }
+
 
         /**
          * Configura el listener de Firestore para la colección 'preguntas'.
@@ -475,14 +565,15 @@
             loadingIndicator.textContent = "Intentando cargar preguntas de Firestore...";
 
 
-            // onSnapshot: Listener en tiempo real
+            // onSnapshot: Listener en tiempo real (READ)
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const unsubscribe = onSnapshot(questionsColRef, (snapshot) => {
                 const fetchedQuestions = [];
 
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    const calculatedPoints = countWords(data.respuesta) > 0 ? countWords(data.respuesta) : 1;
+                    // Los puntos se recalculan al cargar. Mínimo 1 punto para evitar 0.
+                    const calculatedPoints = Math.max(1, countWords(data.respuesta || ''));
 
                     fetchedQuestions.push({
                         id: doc.id,
@@ -498,53 +589,112 @@
                     loadingIndicator.classList.add('hidden');
                     console.log(`Preguntas de Firestore actualizadas. Total: ${questions.length}`);
                 } else {
-                    // Si Firestore está vacío, usamos el fallback
-                    questions = defaultQuestionsData; 
+                    questions = []; // Si está vacía, la dejamos vacía
                     loadingIndicator.classList.add('hidden');
-                    console.log("Firestore vacío. Usando preguntas de reserva estáticas.");
+                    console.log("Firestore vacío.");
                 }
                 
-                // Siempre re-renderizar al recibir datos, incluso si es el fallback
                 fullRender();
+                renderQuestionList(); // Actualizar la lista en el Gestor
                 
             }, (error) => {
                 console.error("Error al escuchar cambios en Firestore. Usando datos estáticos:", error);
                 
-                // En caso de error (configuración incorrecta, permisos, etc.), usamos el fallback
                 questions = defaultQuestionsData; 
                 loadingIndicator.classList.add('hidden');
                 noQuestionsMessage.classList.remove('hidden');
                 noQuestionsMessage.textContent = 'Error de conexión con Firestore. Usando preguntas de reserva.';
                 
-                // Re-renderizar con los datos estáticos
                 fullRender();
-                
-                // Detener el listener de snapshot para evitar reintentos continuos
-                // No llamamos a unsubscribe aquí porque está fuera de su alcance.
-                // En un entorno real se manejaría mejor el scope.
-                console.warn("Listener de Firestore detenido debido a un error.");
             });
         }
         
         /**
-         * Realiza la carga de datos locales y el renderizado.
-         * Llamado por el listener de Firestore o directamente si no hay Firebase.
+         * Renderiza la lista de preguntas dentro del Modal Gestor.
          */
-        function fullRender() {
-            // Carga jugadores y aciertos de localStorage
-            loadLocalState(); 
+        function renderQuestionList() {
+            const listPlaceholder = document.getElementById('list-placeholder');
+            listPlaceholder.classList.add('hidden');
+
+            if (questions.length === 0) {
+                listPlaceholder.textContent = 'No hay preguntas para mostrar.';
+                listPlaceholder.classList.remove('hidden');
+                questionListContainer.innerHTML = '';
+                questionListContainer.appendChild(listPlaceholder);
+                return;
+            }
             
-            // Renderiza la interfaz con la lista actual de preguntas (estáticas o de Firestore)
-            initializeAndRenderHeader(); 
-            renderTable();               
-            
-            // Actualiza las puntuaciones iniciales
-            Object.keys(players).forEach(playerId => updatePlayerScoreDisplay(playerId));
+            let listHTML = '';
+            questions.forEach(q => {
+                listHTML += `
+                    <div class="question-item flex justify-between items-center p-3 sm:p-4">
+                        <div class="flex-grow min-w-0">
+                            <p class="font-bold text-gray-900 truncate">${q.title} <span class="text-xs font-normal text-gray-500 ml-2">(${q.puntos} Pts)</span></p>
+                            <p class="text-sm text-gray-600 truncate">${q.enunciado}</p>
+                        </div>
+                        <div class="flex space-x-2 ml-4 flex-shrink-0">
+                            <button data-id="${q.id}" data-action="edit" class="bg-yellow-500 hover:bg-yellow-600 text-white p-2 rounded-md transition duration-150 text-xs">Editar</button>
+                            <button data-id="${q.id}" data-action="delete" class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-md transition duration-150 text-xs">Borrar</button>
+                        </div>
+                    </div>
+                `;
+            });
+            questionListContainer.innerHTML = listHTML;
         }
 
+
+        // --- Lógica de Formulario CRUD (Create/Update) ---
+        
+        function openCrudModal(question = null) {
+            currentQuestionToEdit = question;
+            const titleElement = document.getElementById('crud-modal-title');
+            const saveBtn = document.getElementById('crud-save-btn');
+            const form = document.getElementById('crud-form');
+            
+            form.reset();
+            
+            if (question) {
+                // Modo Edición (Update)
+                titleElement.textContent = 'Editar Pregunta';
+                document.getElementById('crud-id-group').classList.remove('hidden');
+                document.getElementById('crud-id').value = question.id;
+                document.getElementById('crud-title').value = question.title;
+                document.getElementById('crud-enunciado').value = question.enunciado;
+                document.getElementById('crud-respuesta').value = question.respuesta;
+                saveBtn.textContent = 'Guardar Cambios';
+            } else {
+                // Modo Creación (Create)
+                titleElement.textContent = 'Crear Nueva Pregunta';
+                document.getElementById('crud-id-group').classList.add('hidden');
+                document.getElementById('crud-id').value = '';
+                saveBtn.textContent = 'Crear Pregunta';
+            }
+            showModal(crudModal);
+        }
+
+        async function handleCrudFormSubmit(event) {
+            event.preventDefault();
+
+            const isEditing = !!currentQuestionToEdit;
+            
+            const newQuestion = {
+                id: isEditing ? currentQuestionToEdit.id : crypto.randomUUID(), // Usar ID existente o generar uno nuevo
+                title: document.getElementById('crud-title').value.trim(),
+                enunciado: document.getElementById('crud-enunciado').value.trim(),
+                respuesta: document.getElementById('crud-respuesta').value.trim(),
+            };
+            
+            // Validaciones básicas
+            if (!newQuestion.title || !newQuestion.enunciado || !newQuestion.respuesta) {
+                 showSettingsMessage("Todos los campos (Título, Enunciado y Respuesta) son obligatorios.", 'error');
+                 return;
+            }
+            
+            await saveQuestionToFirestore(newQuestion);
+        }
+        
         // --- Lógica de Importación/Exportación ---
 
-        /** Exporta las preguntas actuales a JSON y las copia al portapapeles. */
         function exportQuestions() {
             // Clonamos para eliminar la propiedad 'puntos' que es calculada
             const questionsToExport = questions.map(q => {
@@ -571,7 +721,6 @@
             return json;
         }
 
-        /** Importa preguntas desde JSON, actualiza Firestore y fuerza la recarga. */
         async function importQuestions() {
             const jsonArea = document.getElementById('import-json-area');
             const jsonString = jsonArea.value.trim();
@@ -591,66 +740,51 @@
             }
 
             let validCount = 0;
-            let invalidCount = 0;
+
+            if (!isAuthReady) {
+                 showSettingsMessage("Error: Firestore no está conectado. No se puede importar.", 'error');
+                 return;
+            }
+
 
             for (const item of importedData) {
-                // Validación básica de la estructura
-                if (item.id && item.title && item.enunciado && item.respuesta) {
-                    if (isAuthReady) {
-                        await saveQuestionToFirestore(item); // Guardar en Firestore
-                    } else {
-                        // Si no está listo, solo lo contamos (no actualizamos la lista local directamente aquí,
-                        // ya que la lista local se actualizará con fullRender al final si no hay Firebase)
-                    }
+                // Validación básica: debe tener al menos ID, título y respuesta
+                if (item.id && item.title && item.respuesta) {
+                    await saveQuestionToFirestore(item); 
                     validCount++;
-                } else {
-                    invalidCount++;
                 }
             }
 
             if (validCount > 0) {
-                // Si la conexión a Firebase está activa, el onSnapshot ya se encargará de
-                // actualizar la lista 'questions' y llamar a fullRender().
-                if (!isAuthReady) {
-                    // Si NO hay Firebase, solo forzamos el renderizado con los datos estáticos de respaldo.
-                    // En este modo, la importación JSON es temporal y solo de demostración.
-                    // Para un uso persistente sin Firebase, deberíamos sobrescribir 'defaultQuestionsData',
-                    // lo cual es una complejidad que evitamos ya que la app DEBE usar Firebase.
-                    showSettingsMessage(`Importación de ${validCount} preguntas finalizada. La aplicación está en modo estático, estas preguntas NO se han guardado permanentemente.`, 'error');
-                    // Para evitar confusión, limpiamos el área para no reintentar
-                    jsonArea.value = '';
-                } else {
-                     showSettingsMessage(`Importación de ${validCount} preguntas iniciada. Firestore se actualizará en breve...`, 'success');
-                     jsonArea.value = '';
-                }
+                 showSettingsMessage(`Importación de ${validCount} preguntas iniciada. Firestore se actualizará en breve...`, 'success');
+                 jsonArea.value = '';
             } else {
-                showSettingsMessage('No se encontraron preguntas válidas con ID, título, enunciado y respuesta.', 'error');
-            }
-            
-            // Si no hay Firebase, forzamos el renderizado aquí para que el usuario vea los cambios
-            if (!isAuthReady && validCount > 0) {
-                 // En modo estático, simplemente reemplazamos la lista con las importadas temporalmente
-                 questions = importedData.map(item => ({ 
-                     ...item, 
-                     puntos: countWords(item.respuesta) > 0 ? countWords(item.respuesta) : 1 
-                 }));
-                 fullRender();
+                showSettingsMessage('No se encontraron preguntas válidas (deben tener ID, título y respuesta).', 'error');
             }
         }
 
+
+        /**
+         * Realiza la carga de datos locales y el renderizado.
+         */
+        function fullRender() {
+            loadLocalState(); 
+            initializeAndRenderHeader(); 
+            renderTable();               
+            Object.keys(players).forEach(playerId => updatePlayerScoreDisplay(playerId));
+        }
 
         // --- Inicialización y Event Listeners ---
         window.addEventListener('load', () => {
             
             // 1. Inicialización y Autenticación Híbrida
             if (hasFirebaseConfig) {
-                 // Modo Firebase
                  setLogLevel('Debug');
                  app = initializeApp(firebaseConfig);
                  db = getFirestore(app);
                  auth = getAuth(app);
                  
-                 loadingIndicator.classList.remove('hidden'); // Mostrar indicador mientras se autentica
+                 loadingIndicator.classList.remove('hidden');
 
                  onAuthStateChanged(auth, async (user) => {
                      if (user) {
@@ -658,31 +792,34 @@
                          isAuthReady = true;
                          console.log("Firebase Auth successful. User ID:", userId);
                      } else {
-                         // Intento de inicio de sesión con token o anónimo
                          try {
                             if (initialAuthToken) {
                                 await signInWithCustomToken(auth, initialAuthToken);
                             } else {
                                 await signInAnonymously(auth);
                             }
-                            userId = auth.currentUser?.uid || crypto.randomUUID(); // Asegurar ID después de sign in
+                            userId = auth.currentUser?.uid || crypto.randomUUID();
                             isAuthReady = true;
 
                          } catch (e) {
                             console.error("Error en signInWithCustomToken/signInAnonymously:", e);
-                            isAuthReady = false; // Fallo de autenticación
+                            isAuthReady = false; 
                          }
                      }
                      
-                     // Una vez autenticado (o fallido), iniciamos el listener de preguntas
                      if (isAuthReady) {
-                        setupQuestionsListener();
+                        setupQuestionsListener(); // Inicia el listener de READ
+                        // Habilitar botones CRUD
+                        newQuestionBtn.disabled = false;
+                        newQuestionBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        settingsModeWarning.classList.add('hidden');
                      } else {
-                         // Si la autenticación falla, usamos el fallback directamente
+                         // Fallback si la autenticación falla
                          questions = defaultQuestionsData;
                          loadingIndicator.classList.add('hidden');
                          noQuestionsMessage.classList.remove('hidden');
                          noQuestionsMessage.textContent = 'Error de autenticación. Usando preguntas de reserva.';
+                         settingsModeWarning.classList.remove('hidden');
                          fullRender();
                      }
                  });
@@ -692,21 +829,19 @@
                 console.warn("Firebase config not available. Running in static mode.");
                 isAuthReady = false; 
                 loadingIndicator.classList.add('hidden');
-                noQuestionsMessage.classList.add('hidden'); // No es necesario si hay preguntas estáticas
+                settingsModeWarning.classList.remove('hidden');
                 questions = defaultQuestionsData; 
                 fullRender();
             }
 
 
-            // 2. Escucha clics en los checkboxes para guardar el estado Y actualizar la puntuación
+            // 2. Escucha clics en los checkboxes
             tableBody.addEventListener('change', (event) => {
                 if (event.target.type === 'checkbox') {
                     const checkbox = event.target;
-                    // El ID del checkbox (playerId-questionId/doc.id) se usa como clave
                     hitsState[checkbox.id] = checkbox.checked; 
-                    saveLocalState(); // Guarda el estado localmente
+                    saveLocalState();
                     
-                    // Llama a la función de actualización visual.
                     const playerId = checkbox.dataset.playerId;
                     updatePlayerScoreDisplay(playerId); 
                 }
@@ -724,28 +859,45 @@
                 if (header) showQuestionModal(header.dataset.questionId);
             });
             
-            // 5. Listeners para cerrar modales
+            // 5. Listeners para cerrar modales (General y Pregunta)
             document.getElementById('modal-close').addEventListener('click', () => hideModal(playerModal));
             document.getElementById('modal-q-close').addEventListener('click', () => hideModal(questionModal));
-            playerModal.addEventListener('click', (e) => {
-                 if (e.target === playerModal) hideModal(playerModal);
-            });
-            questionModal.addEventListener('click', (e) => {
-                 if (e.target === questionModal) hideModal(questionModal);
-            });
-            
-            // 6. Listener para el Modal de Ajustes (Importación/Exportación)
+            playerModal.addEventListener('click', (e) => { if (e.target === playerModal) hideModal(playerModal); });
+            questionModal.addEventListener('click', (e) => { if (e.target === questionModal) hideModal(questionModal); });
+
+            // 6. Listeners para el Modal de Ajustes/Gestor
             document.getElementById('settings-btn').addEventListener('click', () => showModal(settingsModal));
             document.getElementById('modal-settings-close').addEventListener('click', () => hideModal(settingsModal));
-            settingsModal.addEventListener('click', (e) => {
-                 if (e.target === settingsModal) hideModal(settingsModal);
-            });
+            settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) hideModal(settingsModal); });
 
             // Conectar botones de I/E
             document.getElementById('export-btn').addEventListener('click', exportQuestions);
             document.getElementById('import-btn').addEventListener('click', importQuestions);
-        });
+            
+            // 7. Lógica del CRUD (Gestor)
+            newQuestionBtn.addEventListener('click', () => openCrudModal(null));
+            
+            // Delegación de eventos para Editar/Borrar
+            questionListContainer.addEventListener('click', (event) => {
+                const btn = event.target.closest('button[data-action]');
+                if (!btn) return;
+                
+                const questionId = btn.dataset.id;
+                const question = questions.find(q => q.id === questionId);
 
+                if (btn.dataset.action === 'edit' && question) {
+                    openCrudModal(question);
+                } else if (btn.dataset.action === 'delete') {
+                    deleteQuestionFromFirestore(questionId);
+                }
+            });
+            
+            // 8. Lógica del Formulario CRUD
+            document.getElementById('crud-form').addEventListener('submit', handleCrudFormSubmit);
+            document.getElementById('crud-modal-close').addEventListener('click', () => hideModal(crudModal));
+            crudModal.addEventListener('click', (e) => { if (e.target === crudModal) hideModal(crudModal); });
+        });
+        
     </script>
 </body>
 </html>
