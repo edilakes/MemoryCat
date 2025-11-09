@@ -7,13 +7,9 @@
     <title>MemoryCat</title>
 
     <!-- 
-    OBJETIVO: Aplicación de seguimiento de aciertos con estabilidad garantizada.
-    - FILAS: Jugadores.
-    - COLUMNAS: Preguntas (Carga Híbrida: Firestore si está disponible, si no, estáticas).
-    - INTERSECCIÓN: Checkboxes (aciertos/fallos).
-    - PUNTUACIÓN: Se calcula sumando el número de palabras de la respuesta de cada pregunta acertada.
-    - PERSISTENCIA: Jugadores y Aciertos usan localStorage.
-    - GESTOR CRUD: Implementación completa de CRUD para la colección 'preguntas' de Firestore.
+    OBJETIVO: Aplicación de seguimiento de aciertos con edición local, persistencia local y exportación/importación de datos via JSON.
+    - Exportación: Genera 3 archivos JSON (jugadores, preguntas, aciertos).
+    - Importación: Lee 3 archivos JSON subidos por el usuario para restaurar el estado.
     -->
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -21,6 +17,7 @@
         /* Usamos la fuente Inter */
         body {
             font-family: 'Inter', sans-serif;
+            background-color: #f7fafc; /* gray-100 */
         }
         /* Estilos personalizados para los checkboxes */
         .form-checkbox {
@@ -35,869 +32,667 @@
         .form-checkbox:checked {
              border-color: transparent;
              background-color: #38a169; /* green-600 */
+             /* Usamos SVG para el checkmark en lugar de la imagen de fondo por defecto */
+             background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M13.67 4.33a.85.85 0 011.2 0l-7.25 7.25a.85.85 0 01-1.2 0L.33 8.33a.85.85 0 011.2-1.2l3.75 3.75 6.67-6.67a.85.85 0 011.2 0z'/%3e%3c/svg%3e");
+             background-size: 100% 100%;
+             background-position: center;
+             background-repeat: no-repeat;
         }
-        .table-container {
-            width: 100%;
-            overflow-x: auto; /* Permite scroll horizontal si la tabla es muy ancha */
-        }
-        table {
-            min-width: 600px; /* Ancho mínimo para forzar el scroll si es necesario */
-        }
-        /* Estilo para hacer la celda del jugador "sticky" y permitir el scroll horizontal */
-        th:first-child {
-            position: sticky;
-            left: 0;
-            z-index: 10;
-            background-color: #f9fafb; 
-        }
-        td:first-child {
-            position: sticky;
-            left: 0;
-            z-index: 5;
-            background-color: white; 
-            border-right: 1px solid #e2e8f0; /* Separador visual */
-        }
-        /* Estilos de botones más prominentes */
-        .player-button {
-            transition: transform 0.1s;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-        .player-button:active {
-            transform: translateY(1px);
-        }
-        /* Ocultar modales por defecto */
-        .modal { 
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s ease; 
-        }
-        .modal.open { 
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        /* Estilos específicos para la lista del gestor */
-        .question-item:nth-child(even) {
-            background-color: #f7fafc; /* gray-50 */
+        /* Estilo para el hover de las celdas de pregunta */
+        th[data-question-id]:hover,
+        .player-button:hover {
+            cursor: pointer;
+            background-color: #e2e8f0; /* gray-200 */
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+<body>
 
-    <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-6xl">
-        
-        <!-- Contenedor del Título y el Botón de Ajustes -->
-        <div class="flex justify-between items-center mb-6">
-            <!-- Botón de Ajustes (Abre el Gestor/Modal CRUD) -->
-            <button id="settings-btn" class="text-gray-500 hover:text-gray-700 p-2 rounded-full transition duration-150 ease-in-out" aria-label="Ajustes y Gestor de Preguntas">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                </svg>
-            </button>
+    <div class="min-h-screen p-4 md:p-8">
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-extrabold text-indigo-800">MemoryCat</h1>
+            <p class="text-xl text-gray-600 mt-1">Seguimiento de aciertos de preguntas</p>
+        </header>
 
-            <h1 class="text-3xl font-bold text-center text-gray-800 flex-grow">
-                MemoryCat (Juego de Aciertos)
-            </h1>
-            <div class="w-10 h-10"></div> <!-- Placeholder para alinear el título -->
-        </div>
-
-        <!-- Indicador de Carga de Preguntas (oculto en modo estático) -->
-        <div id="loading-indicator" class="text-center py-4 text-lg font-medium text-blue-600 hidden">
-            Intentando cargar preguntas de Firestore...
-        </div>
-        
-        <!-- Mensaje de Cero Preguntas -->
-        <div id="no-questions-message" class="text-center py-8 text-xl font-medium text-gray-500 border-2 border-dashed border-gray-300 rounded-lg hidden">
-            No hay preguntas cargadas.
-        </div>
-
-        <!-- TABLA DE SEGUIMIENTO (El corazón de la app) -->
-        <div class="table-container rounded-xl border border-gray-300 shadow-lg">
-            <table class="w-full text-left">
-                <thead class="bg-gray-50 border-b border-gray-300 sticky top-0">
-                    <tr>
-                        <!-- Cabecera generada por initializeAndRenderHeader() -->
-                    </tr>
-                </thead>
-                <tbody id="player-grid" class="bg-white divide-y divide-gray-200">
-                    <!-- Filas de jugadores generadas por renderTable() -->
-                </tbody>
-            </table>
-        </div>
-        <!-- FIN DE LA TABLA -->
-
-    </div>
-
-    <!-- Modal (Ficha del Jugador) - Detalles y Puntuación (sin cambios) -->
-    <div id="player-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm transform transition-all scale-100" onclick="event.stopPropagation()">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">Ficha del Jugador</h2>
-                <button id="modal-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
+        <div class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-4 md:p-6">
+            
+            <!-- Controles de Importación / Exportación -->
+            <div class="flex flex-col sm:flex-row justify-between gap-3 mb-6 p-4 bg-gray-50 rounded-lg border">
+                
+                <button id="export-data" class="flex-1 px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-150">
+                    Exportar Datos (JSON) 
+                </button>
+                
+                <!-- Input de archivo oculto para la importación -->
+                <input type="file" id="import-file-input" accept=".json" multiple hidden>
+                <button id="import-data" class="flex-1 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-150">
+                    Importar Datos (JSON) 
+                </button>
             </div>
-            <div>
-                <h3 id="modal-name" class="text-xl font-semibold text-blue-600 mb-2"></h3>
-                <p id="modal-course" class="text-gray-700 mb-4"></p>
-                <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg">
-                     <p class="font-bold">Puntuación Total:</p>
-                     <p id="modal-points" class="text-3xl font-extrabold"></p>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal (Ficha de Pregunta) - Detalles de pregunta (sin cambios) -->
-    <div id="question-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog" data-editing-question-id="">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md transform transition-all scale-100" onclick="event.stopPropagation()">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">Detalles de Pregunta</h2>
-                <button id="modal-q-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
-            </div>
-            <div class="space-y-4">
-                 <!-- CAMPO DE TÍTULO (SOLO LECTURA) -->
-                <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                    <h4 class="text-sm font-semibold text-blue-700 uppercase tracking-wider mb-1">Título</h4>
-                    <p id="modal-q-title-display" class="w-full text-gray-800 text-xl font-bold"></p>
-                </div>
-                <!-- FIN CAMPO DE TÍTULO -->
 
-                <div class="bg-gray-50 p-3 rounded-lg border">
-                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Enunciado</h4>
-                    <p id="modal-q-enunciado" class="text-gray-800 text-lg"></p>
-                </div>
-                <div class="bg-gray-50 p-3 rounded-lg border">
-                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Respuesta Clave</h4>
-                    <p id="modal-q-respuesta" class="text-gray-800 text-lg"></p>
-                </div>
-                <div class="bg-yellow-100 p-3 rounded-lg border border-yellow-300">
-                    <h4 class="text-sm font-semibold text-yellow-700 uppercase tracking-wider">Puntos Asignados</h4>
-                    <p id="modal-q-puntos" class="text-xl text-yellow-800 font-extrabold"></p>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Modal (Gestor de Preguntas: CRUD / Importación / Exportación) -->
-    <div id="settings-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-2xl transform transition-all scale-100 h-[90vh] flex flex-col" onclick="event.stopPropagation()">
-            <div class="flex justify-between items-center mb-6 border-b pb-3">
-                <h2 class="text-2xl font-bold text-gray-800">Gestor de Preguntas</h2>
-                <button id="modal-settings-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
+            <div id="loading-spinner" class="hidden text-center p-4">
+                <div class="animate-spin inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full" role="status"></div>
+                <p class="text-indigo-600 mt-2">Cargando datos...</p>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead id="table-head" class="bg-indigo-50 border-b-2 border-indigo-200">
+                        <tr>
+                            <th scope="col" class="sticky left-0 bg-indigo-50 px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider rounded-tl-lg">
+                                Jugador
+                            </th>
+                            <!-- Las cabeceras de Preguntas se generan con JS -->
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Las filas de jugadores se generan con JS -->
+                    </tbody>
+                </table>
             </div>
             
-            <div id="settings-mode-warning" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-lg font-medium hidden">
-                 Advertencia: La aplicación está en modo estático (sin Firebase). El Gestor CRUD está deshabilitado.
+            <div class="mt-6 text-sm text-gray-500 p-2 border-t pt-4">
+                <p>💡 Haz clic en el nombre de un jugador para **editar sus datos o ver su puntuación**. Haz clic en la cabecera de una pregunta para editar su contenido.</p>
+                <div id="feedback-message" class="mt-2 text-center font-semibold text-sm"></div>
             </div>
+        </div>
+    </div>
 
-            <!-- Contenedores del Gestor -->
-            <div class="flex-grow overflow-y-auto pr-2">
+    <!-- Modal de Edición de Jugador y Puntuación -->
+    <div id="player-edit-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 transition-opacity duration-300" style="backdrop-filter: blur(5px);">
+        <!-- Contenido del Modal -->
+        <div class="relative top-10 mx-auto p-5 border w-full max-w-md shadow-lg rounded-xl bg-white transform transition-all duration-300">
+            <div class="mt-3 text-center">
+                <h3 class="text-2xl leading-6 font-bold text-indigo-800 mb-4" id="modal-player-edit-title">Editar Jugador</h3>
                 
-                <!-- Importación / Exportación (Se mantiene, pero se envuelve en un toggle) -->
-                <div class="mb-6 border p-4 rounded-lg bg-gray-50">
-                    <h3 class="text-xl font-semibold mb-2 text-gray-700 cursor-pointer flex justify-between items-center" onclick="document.getElementById('ie-content').classList.toggle('hidden')">
-                         <span>Importación / Exportación JSON</span>
-                         <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                    </h3>
-                    <div id="ie-content" class="hidden pt-2">
-                         <!-- EXPORTAR -->
-                        <div class="mb-4">
-                            <button id="export-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Copiar JSON de Preguntas</button>
-                        </div>
+                <form id="player-edit-form" class="space-y-4">
+                    <!-- Campo oculto para guardar el ID del jugador que se está editando -->
+                    <input type="hidden" id="modal-p-id"> 
 
-                        <!-- IMPORTAR -->
-                        <div class="mb-4">
-                            <p class="text-sm text-red-600 mb-2">Advertencia: Las preguntas importadas se guardarán en Firestore.</p>
-                            <textarea id="import-json-area" rows="3" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" placeholder='[{"id": "qX", "title": "...", "enunciado": "...", "respuesta": "..."}]'></textarea>
-                            <button id="import-btn" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Importar y Actualizar Firestore</button>
-                        </div>
+                    <!-- Puntuación Actual (Solo lectura) -->
+                    <div class="bg-indigo-50 p-3 rounded-lg">
+                        <p class="text-lg text-gray-700">Puntuación: <span class="font-extrabold text-green-600" id="modal-player-score">0</span> Puntos</p>
                     </div>
-                </div>
 
-                <!-- GESTOR CRUD -->
-                <h3 class="text-xl font-semibold mb-3 text-gray-700">Gestión de Preguntas (Firestore CRUD)</h3>
-                
-                <button id="new-question-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 mb-4 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                    <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Nueva Pregunta
-                </button>
-                
-                <!-- Lista de Preguntas (READ) -->
-                <div id="question-list-container" class="border border-gray-300 rounded-lg divide-y divide-gray-200 min-h-[100px] mb-4">
-                    <!-- Las preguntas se inyectarán aquí con renderQuestionList() -->
-                    <div class="p-4 text-center text-gray-500" id="list-placeholder">Cargando preguntas o no hay conexión.</div>
-                </div>
-            </div>
-            <!-- FIN del área scrollable -->
+                    <!-- Campos de Edición -->
+                    <div class="text-left">
+                        <label for="modal-p-input-name" class="block text-sm font-medium text-gray-700">Nombre</label>
+                        <input type="text" id="modal-p-input-name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                    </div>
+                    
+                    <div class="text-left">
+                        <label for="modal-p-input-lastname" class="block text-sm font-medium text-gray-700">Apellidos</label>
+                        <input type="text" id="modal-p-input-lastname" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                    </div>
 
-            <div id="settings-message" class="mt-4 p-3 rounded-lg text-sm hidden flex-shrink-0"></div>
-        </div>
-    </div>
-    
-    <!-- Modal (Formulario CRUD: Crear/Editar) -->
-    <div id="crud-modal" class="modal fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg transform transition-all scale-100" onclick="event.stopPropagation()">
-            <div class="flex justify-between items-center mb-4">
-                <h2 id="crud-modal-title" class="text-2xl font-bold text-gray-800"></h2>
-                <button id="crud-modal-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
+                    <p class="text-sm text-gray-500 pt-2 border-t" id="modal-player-hits-details"></p>
+
+                    <div class="flex space-x-4 mt-6">
+                        <button type="button" id="modal-p-close" class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-gray-400 transition duration-150">
+                            Cerrar
+                        </button>
+                        <button type="submit" id="modal-p-save" class="px-4 py-2 bg-indigo-600 text-white text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-indigo-700 transition duration-150">
+                            Guardar Datos
+                        </button>
+                    </div>
+                </form>
             </div>
-            
-            <form id="crud-form" class="space-y-4">
-                <!-- Campo de ID (solo para mostrar en modo Edición) -->
-                <div id="crud-id-group" class="hidden">
-                    <label class="block text-sm font-medium text-gray-700">ID del Documento (Firestore)</label>
-                    <input type="text" id="crud-id" class="mt-1 block w-full bg-gray-100 border border-gray-300 rounded-md p-2" readonly>
-                </div>
-                
-                <!-- Campo Título -->
-                <div>
-                    <label for="crud-title" class="block text-sm font-medium text-gray-700">Título Corto (Ej: Q1: Nombre)</label>
-                    <input type="text" id="crud-title" required class="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                
-                <!-- Campo Enunciado -->
-                <div>
-                    <label for="crud-enunciado" class="block text-sm font-medium text-gray-700">Enunciado de la Pregunta</label>
-                    <textarea id="crud-enunciado" rows="3" required class="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
-                </div>
-                
-                <!-- Campo Respuesta -->
-                <div>
-                    <label for="crud-respuesta" class="block text-sm font-medium text-gray-700">Respuesta Clave (Para cálculo de puntos)</label>
-                    <textarea id="crud-respuesta" rows="3" required class="mt-1 block w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
-                    <p class="mt-1 text-xs text-gray-500">Los puntos se calculan automáticamente con el número de palabras de la respuesta.</p>
-                </div>
-                
-                <button type="submit" id="crud-save-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
-                    Guardar
-                </button>
-            </form>
         </div>
     </div>
 
 
-    <script type="module">
-        // Importaciones de Firebase 
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Añadimos deleteDoc para la operación D (Delete) y getDocs para el UUID
-        import { getFirestore, collection, onSnapshot, setLogLevel, doc, setDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <!-- Modal de Detalles/Edición de la Pregunta -->
+    <div id="question-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 transition-opacity duration-300" style="backdrop-filter: blur(5px);">
+        <!-- Contenido del Modal -->
+        <div class="relative top-10 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-xl bg-white transform transition-all duration-300">
+            <div class="mt-3 text-center">
+                <h3 class="text-2xl leading-6 font-bold text-indigo-800 mb-4" id="modal-q-title">Editar Pregunta</h3>
+                <form id="question-edit-form" class="space-y-4">
+                    <!-- Campo oculto para guardar el ID de la pregunta que se está editando -->
+                    <input type="hidden" id="modal-q-id"> 
 
-        // --- Configuración y Variables de Firebase (Obligatorias) ---
-        const hasFirebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config !== 'null';
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = hasFirebaseConfig ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    <!-- Campo Título -->
+                    <div class="text-left">
+                        <label for="modal-q-input-title" class="block text-sm font-medium text-gray-700">Título Corto (Ej: Pregunta A)</label>
+                        <input type="text" id="modal-q-input-title" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                    </div>
 
-        let app;
-        let db;
-        let auth;
-        let userId = null; 
-        let isAuthReady = false; 
-        
-        // La fuente de la verdad para las preguntas.
-        const defaultQuestionsData = [
-            { id: 'q1', title: 'Q1: CSS Grid', enunciado: 'Explica brevemente qué problema resuelve CSS Grid Layout.', respuesta: 'CSS Grid resuelve el problema de la maquetación bidimensional compleja, permitiendo al desarrollador definir filas y columnas de manera precisa para el diseño de toda una página o componente.', puntos: 25 },
-            { id: 'q2', title: 'Q2: Scope JS', enunciado: '¿Cuál es la principal diferencia entre `let` y `var` en JavaScript respecto al scope?', respuesta: 'La principal diferencia es que var tiene un scope de función o global, mientras que let tiene un scope de bloque, limitado a las llaves {} donde es declarado.', puntos: 28 },
-            { id: 'q3', title: 'Q3: HTTP Status', enunciado: '¿Qué significa el código de estado HTTP 403?', respuesta: 'El código 403 Forbidden indica que el servidor se niega a autorizar la petición, a pesar de que la sintaxis de la petición es correcta. Esto generalmente se debe a permisos insuficientes o configuración de seguridad.', puntos: 40 },
+                    <!-- Campo Enunciado -->
+                    <div class="text-left">
+                        <label for="modal-q-input-enunciado" class="block text-sm font-medium text-gray-700">Enunciado de la Pregunta</label>
+                        <textarea id="modal-q-input-enunciado" rows="3" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"></textarea>
+                    </div>
+
+                    <!-- Campo Respuesta Clave -->
+                    <div class="text-left">
+                        <label for="modal-q-input-respuesta" class="block text-sm font-medium text-gray-700">Respuesta Clave (para calcular puntos)</label>
+                        <textarea id="modal-q-input-respuesta" rows="2" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"></textarea>
+                        <!-- MENSAJE DE PUNTUACIÓN ACTUALIZADO -->
+                        <p class="text-xs text-gray-500 mt-1">Puntuación actual: <span id="modal-q-calculated-points" class="font-bold">0</span> puntos (igual al número de palabras en la respuesta).</p>
+                    </div>
+
+                    <div class="flex space-space-x-4 mt-6">
+                        <button type="button" id="modal-q-close" class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-gray-400 transition duration-150">
+                            Cancelar
+                        </button>
+                        <button type="submit" id="modal-q-save" class="px-4 py-2 bg-green-600 text-white text-base font-medium rounded-lg w-1/2 shadow-md hover:bg-green-700 transition duration-150">
+                            Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // *** 1. ESTRUCTURA DE DATOS INICIAL (La "Importación por JSON") ***
+        const initialQuestionsData = [
+            { id: 'q1', title: 'Pregunta A', enunciado: '¿Cuál es la capital de España?', respuesta: 'Madrid' },
+            { id: 'q2', title: 'Pregunta B', enunciado: '¿Quién escribió El Quijote?', respuesta: 'Miguel de Cervantes' },
+            { id: 'q3', title: 'Pregunta C', enunciado: 'Elemento químico cuyo símbolo es H', respuesta: 'Hidrógeno' },
+            { id: 'q4', title: 'Pregunta D', enunciado: 'Número de días en un año bisiesto', respuesta: '366 días' },
+            { id: 'q5', title: 'Pregunta E', enunciado: 'El planeta rojo', respuesta: 'Marte' },
+            { id: 'q6', title: 'Pregunta F', enunciado: 'Ave que no vuela', respuesta: 'Pingüino' },
+            { id: 'q7', title: 'Pregunta G', enunciado: '¿Qué es un byte?', respuesta: 'Un conjunto de 8 bits' },
+            { id: 'q8', title: 'Pregunta H', enunciado: 'Cuerpo geométrico con 6 caras cuadradas', respuesta: 'Cubo' },
+            { id: 'q9', title: 'Pregunta I', enunciado: 'La moneda oficial de Japón', respuesta: 'Yen' },
+            { id: 'q10', title: 'Pregunta J', enunciado: 'El río más largo del mundo', respuesta: 'Amazonas' },
         ];
 
-        let questions = defaultQuestionsData; 
-        
-        // Jugadores y aciertos (se quedan en localStorage)
-        let players = {
-            'player-pepe': { id: 'player-pepe', name: 'Pepe Pérez', course: 'Curso A' },
-            'player-juan': { id: 'player-juan', name: 'Juan Jimenez', course: 'Curso B' },
-            'player-ana': { id: 'player-ana', name: 'Ana García', course: 'Curso C' }
+        const initialPlayers = {
+            'player1': { id: 'player1', name: 'Alba', lastName: 'García' },
+            'player2': { id: 'player2', name: 'Benito', lastName: 'López' },
+            'player3': { id: 'player3', name: 'Carla', lastName: 'Martínez' },
+            'player4': { id: 'player4', name: 'David', lastName: 'Rodríguez' },
         };
+
+        // Función auxiliar para calcular puntos: SOLO el número de palabras (sin +2)
+        const countWords = (text) => {
+            if (!text || typeof text !== 'string') return 0;
+            // Usa una expresión regular para dividir por espacios y filtra cadenas vacías
+            return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+        }
+
+        const calculatePoints = (respuesta) => countWords(respuesta);
+        
+        // Estructura de datos principal de Preguntas
+        let questions = initialQuestionsData.map(q => ({
+            ...q,
+            puntos: calculatePoints(q.respuesta) 
+        }));
+        
+        // Estructura de datos principal de Jugadores
+        let players = initialPlayers;
+        
+        // Estado de aciertos: {'playerId-questionId': true/false}
         let hitsState = {}; 
 
-        // Variables para la gestión CRUD
-        let currentQuestionToEdit = null;
+
+        // *** 2. PERSISTENCIA LOCAL (LocalStorage) ***
+        const localStorageKeyQuestions = 'memorycatQuestions';
+        const localStorageKeyPlayers = 'memorycatPlayers';
+        const localStorageKeyHits = 'memorycatHitsState';
+
+        /** Carga el estado de aciertos, preguntas y jugadores desde localStorage o inicializa. */
+        const loadState = () => {
+            // Cargar Preguntas
+            const savedQuestions = localStorage.getItem(localStorageKeyQuestions);
+            if (savedQuestions) {
+                questions = JSON.parse(savedQuestions);
+                // Asegurar que la puntuación se recalcule por si la regla ha cambiado
+                questions = questions.map(q => ({
+                    ...q,
+                    puntos: calculatePoints(q.respuesta)
+                }));
+            }
+            
+            // Cargar Jugadores
+            const savedPlayers = localStorage.getItem(localStorageKeyPlayers);
+            players = savedPlayers ? JSON.parse(savedPlayers) : initialPlayers;
+
+            // Cargar Aciertos
+            const savedHits = localStorage.getItem(localStorageKeyHits);
+            hitsState = savedHits ? JSON.parse(savedHits) : {};
+        };
+
+        /** Guarda el estado actual de aciertos, preguntas y jugadores en localStorage. */
+        const saveState = () => {
+            localStorage.setItem(localStorageKeyQuestions, JSON.stringify(questions));
+            localStorage.setItem(localStorageKeyPlayers, JSON.stringify(players));
+            localStorage.setItem(localStorageKeyHits, JSON.stringify(hitsState));
+        };
+
+
+        // *** 3. FUNCIONES DE RENDERING Y LÓGICA DE EDICIÓN ***
         
-        // --- Elementos de UI ---
-        const tableHeadRow = document.querySelector('table thead tr');
-        const tableBody = document.getElementById('player-grid');
-        const playerModal = document.getElementById('player-modal');
-        const questionModal = document.getElementById('question-modal');
-        const settingsModal = document.getElementById('settings-modal'); 
-        const crudModal = document.getElementById('crud-modal');
-        const loadingIndicator = document.getElementById('loading-indicator');
-        const noQuestionsMessage = document.getElementById('no-questions-message');
-        const settingsMessage = document.getElementById('settings-message');
-        const questionListContainer = document.getElementById('question-list-container');
-        const newQuestionBtn = document.getElementById('new-question-btn');
-        const settingsModeWarning = document.getElementById('settings-mode-warning');
-
-
-        // --- Utilidades ---
-        function countWords(str) {
-            if (!str) return 0;
-            return str.split(/\s+/).filter(word => word.length > 0).length;
-        }
-
-        /** Muestra un mensaje temporal en el modal de ajustes */
-        function showSettingsMessage(message, type = 'success') {
-            settingsMessage.textContent = message;
-            settingsMessage.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
-            if (type === 'error') {
-                settingsMessage.classList.add('bg-red-100', 'text-red-700');
-            } else {
-                settingsMessage.classList.add('bg-green-100', 'text-green-700');
-            }
-            setTimeout(() => {
-                settingsMessage.classList.add('hidden');
-            }, 5000);
-        }
-
-        // --- Persistencia (localStorage para Jugadores y Aciertos) ---
-        const HITS_KEY = 'memorycat_hits';
-        const PLAYERS_KEY = 'memorycat_players'; 
-
-        function saveLocalState() {
-            localStorage.setItem(HITS_KEY, JSON.stringify(hitsState));
-            localStorage.setItem(PLAYERS_KEY, JSON.stringify(players)); 
-        }
-
-        function loadLocalState() {
-            const storedPlayers = localStorage.getItem(PLAYERS_KEY);
-            if (storedPlayers) {
-                players = JSON.parse(storedPlayers);
-            } 
-            
-            const storedHits = localStorage.getItem(HITS_KEY);
-            if (storedHits) {
-                hitsState = JSON.parse(storedHits);
-            } else {
-                 hitsState = {}; 
-            }
-            
-            saveLocalState();
-        }
+        const tableHead = document.getElementById('table-head');
+        const tableBody = document.getElementById('table-body');
+        const feedbackMessage = document.getElementById('feedback-message');
+        const loadingSpinner = document.getElementById('loading-spinner');
         
-        function getQuestionIdFromHitId(hitId, playerId) {
-            if (hitId.startsWith(playerId + '-')) {
-                return hitId.substring(playerId.length + 1);
-            }
-            return null;
-        }
-
-        function calculatePlayerScore(playerId) {
-            const playerHitIds = Object.keys(hitsState).filter(key => key.startsWith(playerId + '-'));
-            let score = 0;
-            
-            playerHitIds.forEach(hitId => {
-                if (hitsState[hitId]) { 
-                    const questionId = getQuestionIdFromHitId(hitId, playerId); 
-                    if (questionId) {
-                        const question = questions.find(q => q.id === questionId);
-                        const points = question && typeof question.puntos === 'number' ? question.puntos : 0;
-                        score += points;
-                    }
-                }
-            });
-            return score;
-        }
-
-        // --- Renderizado y Lógica de Puntuación ---
-
-        function showModal(modalElement) {
-            modalElement.classList.add('open');
-            modalElement.setAttribute('aria-hidden', 'false');
-        }
-
-        function hideModal(modalElement) {
-            modalElement.classList.remove('open');
-            modalElement.setAttribute('aria-hidden', 'true');
-        }
+        // Elementos del modal de Pregunta
+        const modalQInputTitle = document.getElementById('modal-q-input-title');
+        const modalQInputEnunciado = document.getElementById('modal-q-input-enunciado');
+        const modalQInputRespuesta = document.getElementById('modal-q-input-respuesta');
+        const modalQCalculatedPoints = document.getElementById('modal-q-calculated-points');
         
-        function initializeAndRenderHeader() {
-            tableHeadRow.innerHTML = '';
-            
-            let headerHTML = '<th class="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider sticky left-0 bg-gray-50">Jugador / Puntos</th>';
-            
-            questions.forEach(q => {
-                headerHTML += '<th data-question-id="' + q.id + '" class="px-3 py-3 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider cursor-pointer hover:bg-blue-100 transition duration-150 rounded-t-lg">' + q.title + '</th>';
-            });
+        // Elementos del modal de Jugador 
+        const modalPInputName = document.getElementById('modal-p-input-name');
+        const modalPInputLastName = document.getElementById('modal-p-input-lastname');
+        const modalPlayerEditTitle = document.getElementById('modal-player-edit-title');
 
-            tableHeadRow.innerHTML = headerHTML;
-        }
 
-        function renderTable() {
-            tableBody.innerHTML = ''; 
-            
-            if (questions.length === 0) {
-                noQuestionsMessage.classList.remove('hidden');
-                noQuestionsMessage.textContent = isAuthReady 
-                    ? 'No hay preguntas cargadas en Firestore. Usa el Gestor para añadir una.'
-                    : 'No hay preguntas cargadas (modo estático).';
-                return;
-            } else {
-                 noQuestionsMessage.classList.add('hidden');
-            }
+        /** Muestra un mensaje de feedback y lo oculta después de 3 segundos. */
+        const showFeedback = (message, isError = false) => {
+            feedbackMessage.textContent = message;
+            feedbackMessage.className = `mt-2 text-center font-semibold text-sm ${isError ? 'text-red-600' : 'text-green-600'}`;
+            clearTimeout(feedbackMessage.timeout);
+            feedbackMessage.timeout = setTimeout(() => {
+                feedbackMessage.textContent = '';
+                feedbackMessage.className = 'mt-2 text-center font-semibold text-sm';
+            }, 3000);
+        };
 
-            Object.values(players).forEach(player => { 
-                const tr = document.createElement('tr');
-                const initialScore = calculatePlayerScore(player.id);
+        const showLoading = (show) => {
+            loadingSpinner.classList.toggle('hidden', !show);
+        };
+
+
+        /** Renderiza la cabecera de la tabla con las preguntas. */
+        const renderTableHead = () => {
+            const headerRow = tableHead.querySelector('tr');
+            // Mantener solo la primera celda (Jugador)
+            headerRow.innerHTML = '<th scope="col" class="sticky left-0 bg-indigo-50 px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider rounded-tl-lg">Jugador</th>'; 
+
+            questions.forEach((q) => {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.dataset.questionId = q.id; 
+                th.className = 'px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider transition duration-150 rounded-t-md';
                 
-                let rowHTML = `
-                    <td class="p-3 sm:p-4 text-md font-medium text-gray-900 sticky left-0 bg-white z-5">
-                        <button data-player-id="${player.id}" class="player-button w-full text-left bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl transition duration-150 ease-in-out flex justify-between items-center">
-                            <span>${player.name}</span>
-                            <span id="score-${player.id}" class="bg-white text-blue-600 px-2 py-1 rounded-full text-sm font-extrabold ml-4">${initialScore} Pts</span>
-                        </button>
-                    </td>`;
-                
-                questions.forEach(q => {
-                    const checkboxId = player.id + '-' + q.id; 
-                    const isChecked = hitsState[checkboxId] || false; 
-
-                    rowHTML += `<td class="p-3 sm:p-4 text-center">
-                        <input type="checkbox" id="${checkboxId}" data-player-id="${player.id}" data-question-id="${q.id}" class="form-checkbox text-green-500 focus:ring-2 focus:ring-green-400 rounded cursor-pointer" aria-label="${player.name}, pregunta ${q.title}" ${isChecked ? 'checked' : ''}>
-                    </td>`;
-                });
-
-                tr.innerHTML = rowHTML;
-                tableBody.appendChild(tr);
-            });
-        }
-        
-        function updatePlayerScoreDisplay(playerId) {
-            const score = calculatePlayerScore(playerId);
-            const scoreSpan = document.getElementById(`score-${playerId}`);
-            if (scoreSpan) {
-                scoreSpan.textContent = `${score} Pts`;
-            }
-            const modalName = document.getElementById('modal-name');
-            if(playerModal.classList.contains('open') && modalName && modalName.textContent.startsWith(players[playerId].name)) {
-                document.getElementById('modal-points').textContent = score; 
-            }
-        }
-
-        function showPlayerModal(playerId) {
-             const player = players[playerId];
-             if (!player) return;
-
-             const score = calculatePlayerScore(playerId);
-            
-            document.getElementById('modal-name').textContent = player.name;
-            document.getElementById('modal-course').textContent = 'Curso: ' + player.course;
-            document.getElementById('modal-points').textContent = score; 
-            showModal(playerModal);
-        }
-
-        function showQuestionModal(questionId) {
-            const question = questions.find(q => q.id === questionId);
-            if (!question) return;
-
-            questionModal.dataset.editingQuestionId = questionId;
-
-            document.getElementById('modal-q-title-display').textContent = question.title;
-            document.getElementById('modal-q-enunciado').textContent = question.enunciado || 'N/A';
-            document.getElementById('modal-q-respuesta').textContent = question.respuesta || 'N/A';
-            document.getElementById('modal-q-puntos').textContent = question.puntos; 
-            
-            showModal(questionModal);
-        }
-
-        // --- Lógica de Firebase (CRUD) ---
-        
-        /**
-         * Operación C/U: Guarda/Actualiza una pregunta en Firestore.
-         */
-        async function saveQuestionToFirestore(question) {
-            if (!db || !isAuthReady) {
-                console.error("Firestore no está listo. La pregunta no se guardó.");
-                showSettingsMessage("Error de conexión: Firestore no está disponible.", 'error');
-                return;
-            }
-
-            // Excluir la propiedad 'puntos' ya que es calculada.
-            const { puntos, ...dataToSave } = question; 
-            
-            try {
-                // Usamos el ID de la pregunta como ID del documento
-                const questionDocRef = doc(db, `artifacts/${appId}/public/data/preguntas`, question.id);
-                // setDoc crea si no existe o sobrescribe/fusiona si ya existe (Update/Create)
-                await setDoc(questionDocRef, dataToSave, { merge: true });
-                console.log(`Pregunta ${question.id} guardada/actualizada en Firestore.`);
-                showSettingsMessage(`Pregunta "${question.title}" guardada con éxito.`, 'success');
-                hideModal(crudModal);
-            } catch (error) {
-                console.error(`Error al guardar la pregunta ${question.id} en Firestore:`, error);
-                showSettingsMessage(`Error al guardar: ${error.message}`, 'error');
-            }
-        }
-        
-        /**
-         * Operación D: Borra una pregunta de Firestore.
-         */
-        async function deleteQuestionFromFirestore(questionId) {
-            if (!db || !isAuthReady) {
-                showSettingsMessage("Error de conexión: Firestore no está disponible para borrar.", 'error');
-                return;
-            }
-            
-            if (!confirm(`¿Estás seguro de que quieres borrar la pregunta con ID: ${questionId}? Esto es irreversible y afectará a la puntuación de todos los jugadores.`)) {
-                return;
-            }
-
-            try {
-                const questionDocRef = doc(db, `artifacts/${appId}/public/data/preguntas`, questionId);
-                await deleteDoc(questionDocRef);
-                console.log(`Pregunta ${questionId} eliminada de Firestore.`);
-                showSettingsMessage(`Pregunta eliminada con éxito.`, 'success');
-            } catch (error) {
-                console.error(`Error al borrar la pregunta ${questionId} de Firestore:`, error);
-                showSettingsMessage(`Error al borrar: ${error.message}`, 'error');
-            }
-        }
-
-
-        /**
-         * Configura el listener de Firestore para la colección 'preguntas'.
-         */
-        function setupQuestionsListener() {
-            if (!db || !isAuthReady) return;
-            
-            const questionsColRef = collection(db, `artifacts/${appId}/public/data/preguntas`);
-            loadingIndicator.classList.remove('hidden');
-            loadingIndicator.textContent = "Intentando cargar preguntas de Firestore...";
-
-
-            // onSnapshot: Listener en tiempo real (READ)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const unsubscribe = onSnapshot(questionsColRef, (snapshot) => {
-                const fetchedQuestions = [];
-
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    // Los puntos se recalculan al cargar. Mínimo 1 punto para evitar 0.
-                    const calculatedPoints = Math.max(1, countWords(data.respuesta || ''));
-
-                    fetchedQuestions.push({
-                        id: doc.id,
-                        title: data.title || doc.id,
-                        enunciado: data.enunciado || '',
-                        respuesta: data.respuesta || '',
-                        puntos: calculatedPoints 
-                    });
-                });
-
-                if (fetchedQuestions.length > 0) {
-                    questions = fetchedQuestions.sort((a, b) => a.title.localeCompare(b.title));
-                    loadingIndicator.classList.add('hidden');
-                    console.log(`Preguntas de Firestore actualizadas. Total: ${questions.length}`);
-                } else {
-                    questions = []; // Si está vacía, la dejamos vacía
-                    loadingIndicator.classList.add('hidden');
-                    console.log("Firestore vacío.");
-                }
-                
-                fullRender();
-                renderQuestionList(); // Actualizar la lista en el Gestor
-                
-            }, (error) => {
-                console.error("Error al escuchar cambios en Firestore. Usando datos estáticos:", error);
-                
-                questions = defaultQuestionsData; 
-                loadingIndicator.classList.add('hidden');
-                noQuestionsMessage.classList.remove('hidden');
-                noQuestionsMessage.textContent = 'Error de conexión con Firestore. Usando preguntas de reserva.';
-                
-                fullRender();
-            });
-        }
-        
-        /**
-         * Renderiza la lista de preguntas dentro del Modal Gestor.
-         */
-        function renderQuestionList() {
-            const listPlaceholder = document.getElementById('list-placeholder');
-            listPlaceholder.classList.add('hidden');
-
-            if (questions.length === 0) {
-                listPlaceholder.textContent = 'No hay preguntas para mostrar.';
-                listPlaceholder.classList.remove('hidden');
-                questionListContainer.innerHTML = '';
-                questionListContainer.appendChild(listPlaceholder);
-                return;
-            }
-            
-            let listHTML = '';
-            questions.forEach(q => {
-                listHTML += `
-                    <div class="question-item flex justify-between items-center p-3 sm:p-4">
-                        <div class="flex-grow min-w-0">
-                            <p class="font-bold text-gray-900 truncate">${q.title} <span class="text-xs font-normal text-gray-500 ml-2">(${q.puntos} Pts)</span></p>
-                            <p class="text-sm text-gray-600 truncate">${q.enunciado}</p>
-                        </div>
-                        <div class="flex space-x-2 ml-4 flex-shrink-0">
-                            <button data-id="${q.id}" data-action="edit" class="bg-yellow-500 hover:bg-yellow-600 text-white p-2 rounded-md transition duration-150 text-xs">Editar</button>
-                            <button data-id="${q.id}" data-action="delete" class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-md transition duration-150 text-xs">Borrar</button>
-                        </div>
+                th.innerHTML = `
+                    <div class="flex flex-col items-center">
+                        <span class="font-bold text-sm">${q.title}</span>
+                        <span class="text-xs text-indigo-500">${q.puntos} Pts</span>
                     </div>
                 `;
+                headerRow.appendChild(th);
             });
-            questionListContainer.innerHTML = listHTML;
-        }
+        };
 
+        /** Renderiza el cuerpo de la tabla con jugadores y checkboxes. */
+        const renderTableBody = () => {
+            tableBody.innerHTML = ''; // Limpiar contenido existente
 
-        // --- Lógica de Formulario CRUD (Create/Update) ---
-        
-        function openCrudModal(question = null) {
-            currentQuestionToEdit = question;
-            const titleElement = document.getElementById('crud-modal-title');
-            const saveBtn = document.getElementById('crud-save-btn');
-            const form = document.getElementById('crud-form');
-            
-            form.reset();
-            
-            if (question) {
-                // Modo Edición (Update)
-                titleElement.textContent = 'Editar Pregunta';
-                document.getElementById('crud-id-group').classList.remove('hidden');
-                document.getElementById('crud-id').value = question.id;
-                document.getElementById('crud-title').value = question.title;
-                document.getElementById('crud-enunciado').value = question.enunciado;
-                document.getElementById('crud-respuesta').value = question.respuesta;
-                saveBtn.textContent = 'Guardar Cambios';
-            } else {
-                // Modo Creación (Create)
-                titleElement.textContent = 'Crear Nueva Pregunta';
-                document.getElementById('crud-id-group').classList.add('hidden');
-                document.getElementById('crud-id').value = '';
-                saveBtn.textContent = 'Crear Pregunta';
-            }
-            showModal(crudModal);
-        }
+            // Usamos Object.values(players) para asegurar el orden
+            Object.values(players).forEach((player, playerIndex) => {
+                const tr = document.createElement('tr');
+                tr.className = playerIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50';
 
-        async function handleCrudFormSubmit(event) {
-            event.preventDefault();
+                // Celda del Jugador (Botón para abrir Modal de Edición/Puntuación)
+                const fullName = `${player.name} ${player.lastName || ''}`.trim();
 
-            const isEditing = !!currentQuestionToEdit;
-            
-            const newQuestion = {
-                id: isEditing ? currentQuestionToEdit.id : crypto.randomUUID(), // Usar ID existente o generar uno nuevo
-                title: document.getElementById('crud-title').value.trim(),
-                enunciado: document.getElementById('crud-enunciado').value.trim(),
-                respuesta: document.getElementById('crud-respuesta').value.trim(),
-            };
-            
-            // Validaciones básicas
-            if (!newQuestion.title || !newQuestion.enunciado || !newQuestion.respuesta) {
-                 showSettingsMessage("Todos los campos (Título, Enunciado y Respuesta) son obligatorios.", 'error');
-                 return;
-            }
-            
-            await saveQuestionToFirestore(newQuestion);
-        }
-        
-        // --- Lógica de Importación/Exportación ---
+                const playerCell = document.createElement('td');
+                playerCell.className = 'sticky left-0 bg-inherit px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-r border-gray-200';
+                playerCell.innerHTML = `
+                    <button class="player-button text-indigo-600 hover:text-indigo-900 font-bold p-1 rounded-md transition duration-150" data-player-id="${player.id}">
+                        ${fullName}
+                    </button>
+                `;
+                tr.appendChild(playerCell);
 
-        function exportQuestions() {
-            // Clonamos para eliminar la propiedad 'puntos' que es calculada
-            const questionsToExport = questions.map(q => {
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { puntos, ...rest } = q;
-                return rest;
+                // Celdas de Checkboxes (Aciertos)
+                questions.forEach(q => {
+                    const cell = document.createElement('td');
+                    cell.className = 'px-4 py-2 whitespace-nowrap text-center';
+                    const hitId = `${player.id}-${q.id}`;
+                    const isChecked = hitsState[hitId] || false; // Estado del checkbox
+
+                    cell.innerHTML = `
+                        <input type="checkbox" id="${hitId}" 
+                               class="form-checkbox text-green-600 border-gray-300 focus:ring-green-500" 
+                               ${isChecked ? 'checked' : ''}>
+                    `;
+                    tr.appendChild(cell);
+                });
+
+                tableBody.appendChild(tr);
             });
-            const json = JSON.stringify(questionsToExport, null, 2);
-            
-            // Copiar al portapapeles
-            const tempTextArea = document.createElement('textarea');
-            tempTextArea.value = json;
-            document.body.appendChild(tempTextArea);
-            tempTextArea.select();
-            
-            try {
-                document.execCommand('copy');
-                showSettingsMessage('Preguntas copiadas al portapapeles como JSON.', 'success');
-            } catch (err) {
-                showSettingsMessage('Error al copiar: intente seleccionar y copiar el texto manualmente.', 'error');
-            }
-            document.body.removeChild(tempTextArea);
-            
-            return json;
+        };
+        
+        /** Renderizado completo de la interfaz */
+        const fullRender = () => {
+             renderTableHead();
+             renderTableBody();
+             saveState(); // Guardar el nuevo estado en localStorage después de cada renderizado completo
         }
 
-        async function importQuestions() {
-            const jsonArea = document.getElementById('import-json-area');
-            const jsonString = jsonArea.value.trim();
-
-            if (!jsonString) {
-                showSettingsMessage('Por favor, pegue el JSON de las preguntas para importar.', 'error');
-                return;
-            }
-
-            let importedData;
-            try {
-                importedData = JSON.parse(jsonString);
-                if (!Array.isArray(importedData)) throw new Error('El JSON debe ser un array.');
-            } catch (e) {
-                showSettingsMessage('Error al parsear el JSON: ' + e.message, 'error');
-                return;
-            }
-
-            let validCount = 0;
-
-            if (!isAuthReady) {
-                 showSettingsMessage("Error: Firestore no está conectado. No se puede importar.", 'error');
-                 return;
-            }
-
-
-            for (const item of importedData) {
-                // Validación básica: debe tener al menos ID, título y respuesta
-                if (item.id && item.title && item.respuesta) {
-                    await saveQuestionToFirestore(item); 
-                    validCount++;
-                }
-            }
-
-            if (validCount > 0) {
-                 showSettingsMessage(`Importación de ${validCount} preguntas iniciada. Firestore se actualizará en breve...`, 'success');
-                 jsonArea.value = '';
-            } else {
-                showSettingsMessage('No se encontraron preguntas válidas (deben tener ID, título y respuesta).', 'error');
-            }
-        }
-
+        // *** 4. LÓGICA DE IMPORTACIÓN Y EXPORTACIÓN ***
 
         /**
-         * Realiza la carga de datos locales y el renderizado.
+         * Descarga un objeto JSON como archivo en el navegador.
+         * @param {object} data El objeto de datos a exportar.
+         * @param {string} filename Nombre del archivo.
          */
-        function fullRender() {
-            loadLocalState(); 
-            initializeAndRenderHeader(); 
-            renderTable();               
-            Object.keys(players).forEach(playerId => updatePlayerScoreDisplay(playerId));
+        const downloadJson = (data, filename) => {
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        /** Manejador de la exportación: crea y descarga los tres archivos. */
+        const handleExport = () => {
+            // 1. Exportar Jugadores
+            downloadJson(players, 'memcat_jugadores.json');
+            
+            // 2. Exportar Preguntas
+            // Creamos una copia para evitar exportar las funciones/propiedades que no son parte del modelo
+            const exportQuestions = questions.map(q => ({
+                id: q.id,
+                title: q.title,
+                enunciado: q.enunciado,
+                respuesta: q.respuesta,
+                puntos: q.puntos // Esto es calculado, pero lo incluimos para claridad
+            }));
+            downloadJson(exportQuestions, 'memcat_preguntas.json');
+
+            // 3. Exportar Aciertos
+            downloadJson(hitsState, 'memcat_aciertos.json');
+
+            showFeedback('¡Datos exportados correctamente! Se han descargado 3 archivos JSON.');
+        };
+        
+        /**
+         * Manejador de la importación: lee los archivos subidos y actualiza el estado.
+         */
+        const handleImport = (event) => {
+            const files = event.target.files;
+            if (files.length === 0) return;
+            
+            showLoading(true);
+            let importedData = {
+                jugadores: null,
+                preguntas: null,
+                aciertos: null
+            };
+            let filesRead = 0;
+
+            const updateStateAndRender = () => {
+                // Verificar si todos los archivos han sido leídos (o al menos se ha intentado)
+                if (filesRead === files.length) {
+                    
+                    // 1. Actualizar Jugadores
+                    if (importedData.jugadores) {
+                        players = importedData.jugadores;
+                        console.log('Jugadores importados:', Object.keys(players).length);
+                    } else {
+                        console.warn('Archivo de jugadores no encontrado o inválido. Manteniendo datos actuales.');
+                    }
+
+                    // 2. Actualizar Preguntas
+                    if (importedData.preguntas && Array.isArray(importedData.preguntas) && importedData.preguntas.length > 0) {
+                        questions = importedData.preguntas.map(q => ({
+                            ...q,
+                            // Recalcular puntos con la regla actual para asegurar consistencia
+                            puntos: calculatePoints(q.respuesta || '') 
+                        }));
+                        console.log('Preguntas importadas:', questions.length);
+                    } else {
+                        console.warn('Archivo de preguntas no encontrado o inválido. Manteniendo datos actuales.');
+                    }
+
+                    // 3. Actualizar Aciertos
+                    if (importedData.aciertos) {
+                        hitsState = importedData.aciertos;
+                        console.log('Aciertos importados:', Object.keys(hitsState).length);
+                    } else {
+                        console.warn('Archivo de aciertos no encontrado o inválido. Manteniendo datos actuales.');
+                    }
+                    
+                    // 4. Forzar el renderizado y guardar en localStorage
+                    fullRender();
+                    showLoading(false);
+                    showFeedback('¡Importación de datos completada!', false);
+                }
+            };
+            
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const json = JSON.parse(e.target.result);
+                        const fileName = file.name.toLowerCase();
+
+                        if (fileName.includes('jugadores')) {
+                            importedData.jugadores = json;
+                        } else if (fileName.includes('preguntas')) {
+                            importedData.preguntas = json;
+                        } else if (fileName.includes('aciertos')) {
+                            importedData.aciertos = json;
+                        }
+                    } catch (error) {
+                        console.error('Error al parsear el archivo JSON:', file.name, error);
+                        showFeedback(`Error al leer el archivo ${file.name}. Asegúrate de que es un JSON válido.`, true);
+                    } finally {
+                        filesRead++;
+                        updateStateAndRender();
+                    }
+                };
+                reader.onerror = () => {
+                    filesRead++;
+                    console.error('Error al leer el archivo:', file.name);
+                    updateStateAndRender();
+                };
+                reader.readAsText(file);
+            });
+        };
+        
+
+        // *** 5. LÓGICA MODALES (Sin cambios) ***
+
+        const playerEditModal = document.getElementById('player-edit-modal'); 
+        const questionModal = document.getElementById('question-modal');
+
+        const showModal = (modalElement) => {
+            modalElement.classList.remove('hidden');
+        };
+
+        const hideModal = (modalElement) => {
+            modalElement.classList.add('hidden');
+        };
+
+        /** Muestra el modal con la puntuación y campos editables del jugador. */
+        const showPlayerEditModal = (playerId) => {
+            const player = players[playerId];
+            if (!player) return;
+
+            // 1. Calcular Puntuación y Detalles
+            let score = 0;
+            let hitsDetails = [];
+
+            questions.forEach(q => {
+                const hitId = `${playerId}-${q.id}`;
+                if (hitsState[hitId]) {
+                    score += q.puntos;
+                    hitsDetails.push(`✅ ${q.title} (${q.puntos} Pts)`);
+                }
+            });
+
+            // 2. Llenar el contenido del modal
+            modalPlayerEditTitle.textContent = `Editar Jugador: ${player.name} ${player.lastName}`;
+            document.getElementById('modal-p-id').value = player.id; 
+            
+            // Campos de edición
+            modalPInputName.value = player.name;
+            modalPInputLastName.value = player.lastName || '';
+            
+            // Puntuación y detalles
+            document.getElementById('modal-player-score').textContent = score;
+            document.getElementById('modal-player-hits-details').innerHTML = 
+                `**Aciertos:** ${hitsDetails.length > 0 ? hitsDetails.join(', ') : 'Ninguno.'}`;
+
+            showModal(playerEditModal);
+        }
+        
+        /** Manejador de la edición local del jugador */
+        const handlePlayerEditSubmit = (event) => {
+            event.preventDefault();
+
+            const playerId = document.getElementById('modal-p-id').value;
+            const updatedName = modalPInputName.value.trim();
+            const updatedLastName = modalPInputLastName.value.trim();
+
+            if (players[playerId]) {
+                // 1. Actualizar el objeto en la estructura players
+                players[playerId].name = updatedName;
+                players[playerId].lastName = updatedLastName;
+
+                // 2. Re-renderizar la tabla para reflejar los cambios
+                fullRender();
+                
+                // 3. Ocultar el modal
+                hideModal(playerEditModal);
+                
+                showFeedback('Datos del jugador guardados.');
+            } else {
+                console.error('No se pudo encontrar el jugador para actualizar.');
+            }
         }
 
-        // --- Inicialización y Event Listeners ---
-        window.addEventListener('load', () => {
-            
-            // 1. Inicialización y Autenticación Híbrida
-            if (hasFirebaseConfig) {
-                 setLogLevel('Debug');
-                 app = initializeApp(firebaseConfig);
-                 db = getFirestore(app);
-                 auth = getAuth(app);
-                 
-                 loadingIndicator.classList.remove('hidden');
 
-                 onAuthStateChanged(auth, async (user) => {
-                     if (user) {
-                         userId = user.uid;
-                         isAuthReady = true;
-                         console.log("Firebase Auth successful. User ID:", userId);
-                     } else {
-                         try {
-                            if (initialAuthToken) {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                            } else {
-                                await signInAnonymously(auth);
-                            }
-                            userId = auth.currentUser?.uid || crypto.randomUUID();
-                            isAuthReady = true;
+        /** Muestra el modal de edición de la Pregunta. */
+        const showQuestionModal = (questionId) => {
+            const q = questions.find(q => q.id === questionId);
+            if (!q) return;
 
-                         } catch (e) {
-                            console.error("Error en signInWithCustomToken/signInAnonymously:", e);
-                            isAuthReady = false; 
-                         }
-                     }
-                     
-                     if (isAuthReady) {
-                        setupQuestionsListener(); // Inicia el listener de READ
-                        // Habilitar botones CRUD
-                        newQuestionBtn.disabled = false;
-                        newQuestionBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                        settingsModeWarning.classList.add('hidden');
-                     } else {
-                         // Fallback si la autenticación falla
-                         questions = defaultQuestionsData;
-                         loadingIndicator.classList.add('hidden');
-                         noQuestionsMessage.classList.remove('hidden');
-                         noQuestionsMessage.textContent = 'Error de autenticación. Usando preguntas de reserva.';
-                         settingsModeWarning.classList.remove('hidden');
-                         fullRender();
-                     }
-                 });
+            // 1. Cargar datos en el formulario
+            document.getElementById('modal-q-id').value = q.id;
+            document.getElementById('modal-q-title').textContent = `Editar: ${q.title}`;
+            modalQInputTitle.value = q.title;
+            modalQInputEnunciado.value = q.enunciado;
+            modalQInputRespuesta.value = q.respuesta;
+            modalQCalculatedPoints.textContent = q.puntos; 
 
-            } else {
-                // Modo Estático (Sin Firebase Config)
-                console.warn("Firebase config not available. Running in static mode.");
-                isAuthReady = false; 
-                loadingIndicator.classList.add('hidden');
-                settingsModeWarning.classList.remove('hidden');
-                questions = defaultQuestionsData; 
+            // 2. Listener para actualizar puntos en tiempo real (feedback)
+            const updatePoints = () => {
+                const newResponse = modalQInputRespuesta.value;
+                modalQCalculatedPoints.textContent = calculatePoints(newResponse); 
+            };
+            modalQInputRespuesta.removeEventListener('input', updatePoints); 
+            modalQInputRespuesta.addEventListener('input', updatePoints); 
+
+            showModal(questionModal);
+        }
+        
+        /** Manejador de la edición local de la pregunta */
+        const handleQuestionEditSubmit = (event) => {
+            event.preventDefault();
+
+            const questionId = document.getElementById('modal-q-id').value;
+            const updatedTitle = modalQInputTitle.value.trim();
+            const updatedEnunciado = modalQInputEnunciado.value.trim();
+            const updatedRespuesta = modalQInputRespuesta.value.trim();
+
+            // Buscar el índice de la pregunta
+            const questionIndex = questions.findIndex(q => q.id === questionId);
+
+            if (questionIndex !== -1) {
+                // 1. Actualizar el objeto
+                questions[questionIndex].title = updatedTitle;
+                questions[questionIndex].enunciado = updatedEnunciado;
+                questions[questionIndex].respuesta = updatedRespuesta;
+                questions[questionIndex].puntos = calculatePoints(updatedRespuesta);
+
+                // 2. Re-renderizar la tabla 
                 fullRender();
+                
+                // 3. Ocultar el modal
+                hideModal(questionModal);
+                
+                showFeedback('Datos de la pregunta guardados.');
+            } else {
+                console.error('No se pudo encontrar la pregunta para actualizar.');
             }
+        }
 
 
-            // 2. Escucha clics en los checkboxes
+        // *** 6. INICIALIZACIÓN Y LISTENERS PRINCIPALES ***
+
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // 1. Cargar el estado guardado y realizar el renderizado inicial
+            loadState();
+            fullRender();
+
+
+            // --- LISTENERS DE INTERFAZ Y LÓGICA ---
+
+            // 1. Escucha cambios en checkboxes para guardar estado (delegación de eventos)
             tableBody.addEventListener('change', (event) => {
                 if (event.target.type === 'checkbox') {
                     const checkbox = event.target;
                     hitsState[checkbox.id] = checkbox.checked; 
-                    saveLocalState();
+                    saveState(); 
                     
-                    const playerId = checkbox.dataset.playerId;
-                    updatePlayerScoreDisplay(playerId); 
+                    // Si el modal de jugador está abierto, actualiza su puntuación
+                    const [playerId] = checkbox.id.split('-');
+                    if (!playerEditModal.classList.contains('hidden')) {
+                        showPlayerEditModal(playerId); 
+                    }
                 }
             });
 
-            // 3. Escucha clics en botones de jugador para ver la PUNTUACIÓN (Modal)
+            // 2. Escucha clics en botones de jugador para abrir el modal de EDICIÓN/PUNTUACIÓN
             tableBody.addEventListener('click', (event) => {
                 const button = event.target.closest('.player-button');
-                if (button) showPlayerModal(button.dataset.playerId);
+                if (button) showPlayerEditModal(button.dataset.playerId);
             });
 
-            // 4. Escucha clics en la cabecera para ver detalles de la Pregunta
-            tableHeadRow.addEventListener('click', (event) => {
+            // 3. Escucha clics en la cabecera para abrir el modal de EDICIÓN de Pregunta
+            tableHead.addEventListener('click', (event) => {
                 const header = event.target.closest('th[data-question-id]');
                 if (header) showQuestionModal(header.dataset.questionId);
             });
             
-            // 5. Listeners para cerrar modales (General y Pregunta)
-            document.getElementById('modal-close').addEventListener('click', () => hideModal(playerModal));
-            document.getElementById('modal-q-close').addEventListener('click', () => hideModal(questionModal));
-            playerModal.addEventListener('click', (e) => { if (e.target === playerModal) hideModal(playerModal); });
-            questionModal.addEventListener('click', (e) => { if (e.target === questionModal) hideModal(questionModal); });
+            // 4. Listener para la EXPORTACIÓN
+            document.getElementById('export-data').addEventListener('click', handleExport);
 
-            // 6. Listeners para el Modal de Ajustes/Gestor
-            document.getElementById('settings-btn').addEventListener('click', () => showModal(settingsModal));
-            document.getElementById('modal-settings-close').addEventListener('click', () => hideModal(settingsModal));
-            settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) hideModal(settingsModal); });
-
-            // Conectar botones de I/E
-            document.getElementById('export-btn').addEventListener('click', exportQuestions);
-            document.getElementById('import-btn').addEventListener('click', importQuestions);
-            
-            // 7. Lógica del CRUD (Gestor)
-            newQuestionBtn.addEventListener('click', () => openCrudModal(null));
-            
-            // Delegación de eventos para Editar/Borrar
-            questionListContainer.addEventListener('click', (event) => {
-                const btn = event.target.closest('button[data-action]');
-                if (!btn) return;
-                
-                const questionId = btn.dataset.id;
-                const question = questions.find(q => q.id === questionId);
-
-                if (btn.dataset.action === 'edit' && question) {
-                    openCrudModal(question);
-                } else if (btn.dataset.action === 'delete') {
-                    deleteQuestionFromFirestore(questionId);
-                }
+            // 5. Listener para la IMPORTACIÓN (el botón simula un click en el input)
+            document.getElementById('import-data').addEventListener('click', () => {
+                document.getElementById('import-file-input').click();
             });
             
-            // 8. Lógica del Formulario CRUD
-            document.getElementById('crud-form').addEventListener('submit', handleCrudFormSubmit);
-            document.getElementById('crud-modal-close').addEventListener('click', () => hideModal(crudModal));
-            crudModal.addEventListener('click', (e) => { if (e.target === crudModal) hideModal(crudModal); });
+            // 6. Listener para el cambio real del archivo de IMPORTACIÓN
+            document.getElementById('import-file-input').addEventListener('change', handleImport);
+
+            // 7. Listeners de formularios de Edición
+            document.getElementById('player-edit-form').addEventListener('submit', handlePlayerEditSubmit);
+            document.getElementById('question-edit-form').addEventListener('submit', handleQuestionEditSubmit);
+
+            // 8. Listeners para cerrar modales
+            document.getElementById('modal-p-close').addEventListener('click', () => hideModal(playerEditModal));
+            document.getElementById('modal-q-close').addEventListener('click', (e) => {
+                e.preventDefault(); 
+                hideModal(questionModal);
+            });
+
+            // 9. Cerrar al hacer clic en el fondo
+            playerEditModal.addEventListener('click', (e) => {
+                 if (e.target === playerEditModal) hideModal(playerEditModal);
+            });
+            questionModal.addEventListener('click', (e) => {
+                 if (e.target === questionModal) hideModal(questionModal);
+            });
         });
-        
+
     </script>
 </body>
 </html>
