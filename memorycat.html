@@ -134,14 +134,22 @@
         </div>
     </div>
     
-    <!-- Modal (Ficha de Pregunta) - Incluye el enunciado y puntos -->
-    <div id="question-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
+    <!-- Modal (Ficha de Pregunta) - Incluye el título (no editable), enunciado y puntos -->
+    <div id="question-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog" data-editing-question-id="">
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md transform transition-all scale-100" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-bold text-gray-800">Detalles de Pregunta</h2>
                 <button id="modal-q-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
             </div>
             <div class="space-y-4">
+                 <!-- CAMPO DE TÍTULO (AHORA DE SOLO LECTURA) -->
+                <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <h4 class="text-sm font-semibold text-blue-700 uppercase tracking-wider mb-1">Título</h4>
+                    <!-- Se ha cambiado el INPUT por un P para hacerlo de solo lectura -->
+                    <p id="modal-q-title-display" class="w-full text-gray-800 text-xl font-bold"></p>
+                </div>
+                <!-- FIN CAMPO DE TÍTULO -->
+
                 <div class="bg-gray-50 p-3 rounded-lg border">
                     <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Enunciado</h4>
                     <p id="modal-q-enunciado" class="text-gray-800 text-lg"></p>
@@ -223,6 +231,7 @@
         ];
 
         // La lista completa de preguntas con los puntos y títulos calculados
+        // ATENCIÓN: Esta lista es la que se modifica al editar el título.
         let questions = []; 
 
         // La fuente de datos de los jugadores (OBJECT). Con IDs estables.
@@ -237,11 +246,20 @@
 
         // --- Persistencia (localStorage) ---
         const HITS_KEY = 'memcat_hits';
+        // CLAVE ADICIONAL para guardar la lista de preguntas
+        const QUESTIONS_KEY = 'memcat_questions'; 
 
+        /**
+         * Guarda el estado de los aciertos y las preguntas.
+         */
         function saveState() {
             localStorage.setItem(HITS_KEY, JSON.stringify(hitsState));
+            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(questions)); // Guarda la estructura actual de preguntas
         }
 
+        /**
+         * Carga el estado de los aciertos y las preguntas.
+         */
         function loadState() {
             // Carga el estado de los aciertos
             const storedHits = localStorage.getItem(HITS_KEY);
@@ -251,18 +269,23 @@
                  hitsState = {}; // Si no hay hits, inicializa vacío
             }
             
-            // Aplica el estado a los checkboxes
-            Object.keys(hitsState).forEach(id => {
-                const checkbox = document.getElementById(id);
-                if (checkbox) {
-                    checkbox.checked = hitsState[id];
-                }
-            });
+            // Carga la estructura de las preguntas si existe
+            const storedQuestions = localStorage.getItem(QUESTIONS_KEY);
+            if (storedQuestions) {
+                // Si hay preguntas guardadas, las usamos
+                questions = JSON.parse(storedQuestions);
+            } else {
+                // Si no hay preguntas guardadas, inicializamos la estructura completa
+                 initializeData();
+            }
+
+
+            // Aplica el estado de aciertos a los checkboxes (se hace en fullRender/renderTable)
         }
         
         /**
          * Inicializa la estructura de datos de las preguntas, garantizando 23 preguntas.
-         * Todas las preguntas (reales y relleno) tienen ahora un ID estable/UUID.
+         * Se llama solo si no hay datos de preguntas en localStorage.
          */
         function initializeData() {
             // Número fijo de preguntas a generar (23 para llenar la tabla)
@@ -272,8 +295,9 @@
             const defaultPlaceholderPoints = 1; 
 
             for (let i = 0; i < maxQuestions; i++) {
-                const existingQuestion = initialQuestionsData[i];
-                let q = existingQuestion || {};
+                // Usamos la pregunta inicial si existe
+                const existingQuestion = initialQuestionsData.find((q, index) => index === i); 
+                let q = existingQuestion ? {...existingQuestion} : {}; // Clonamos para no modificar la fuente original
 
                 // Si no existe, creamos un placeholder con ID estable y título numérico.
                 if (!existingQuestion) {
@@ -295,6 +319,8 @@
                     puntos: calculatedPoints // Asignamos los puntos calculados
                 });
             }
+            // Guardamos el estado inicial de las preguntas al crear la estructura
+            saveState(); 
         }
 
         /**
@@ -348,6 +374,11 @@
         const tableBody = document.getElementById('player-grid');
         const playerModal = document.getElementById('player-modal');
         const questionModal = document.getElementById('question-modal');
+        // Usamos el nuevo ID para el elemento P de solo lectura
+        const questionTitleDisplay = document.getElementById('modal-q-title-display'); 
+        
+        // La función de edición se mantiene, pero ya no se usa el listener del change del input.
+        function updateQuestionTitle() { /* NO HAY NADA QUE HACER */ }
 
         /**
          * Muestra un modal
@@ -409,7 +440,11 @@
                 questions.forEach(q => {
                     // CLAVE DE PERSISTENCIA: player.id - q.id (UUID o ID estable)
                     const checkboxId = player.id + '-' + q.id; 
-                    rowHTML += `<td class="p-3 sm:p-4 text-center"><input type="checkbox" id="${checkboxId}" data-player-id="${player.id}" data-question-id="${q.id}" class="form-checkbox text-green-500 focus:ring-2 focus:ring-green-400 rounded cursor-pointer" aria-label="${player.name}, pregunta ${q.title}"></td>`;
+                    const isChecked = hitsState[checkboxId] || false; // Carga el estado del acierto
+
+                    rowHTML += `<td class="p-3 sm:p-4 text-center">
+                        <input type="checkbox" id="${checkboxId}" data-player-id="${player.id}" data-question-id="${q.id}" class="form-checkbox text-green-500 focus:ring-2 focus:ring-green-400 rounded cursor-pointer" aria-label="${player.name}, pregunta ${q.title}" ${isChecked ? 'checked' : ''}>
+                    </td>`;
                 });
 
                 tr.innerHTML = rowHTML;
@@ -463,22 +498,32 @@
             const question = questions.find(q => q.id === questionId);
             if (!question) return;
 
+            // Almacena el ID de la pregunta (aunque no sea editable, es buena práctica)
+            questionModal.dataset.editingQuestionId = questionId;
+
+            // Se ha modificado para usar el elemento P de solo lectura
+            questionTitleDisplay.textContent = question.title;
+
+            // Cargar el resto de la información
             document.getElementById('modal-q-enunciado').textContent = question.enunciado;
             document.getElementById('modal-q-respuesta').textContent = question.respuesta;
-            // Mostramos los puntos que ahora son variables (número de palabras)
             document.getElementById('modal-q-puntos').textContent = question.puntos; 
+            
             showModal(questionModal);
         }
-        
+
         /**
-         * Inicializa la aplicación: calcula puntos, renderiza tabla, carga estado.
+         * Inicializa la aplicación: carga estado (o inicializa), renderiza.
          */
         function fullRender() {
-            initializeData();
+            // Carga o inicializa los datos de preguntas y aciertos.
+            loadState(); 
+            
+            // Renderiza la interfaz
             initializeAndRenderHeader(); 
             renderTable();               
-            loadState(); 
-            // Después de cargar el estado, actualizamos todas las puntuaciones visibles
+            
+            // Después de cargar el estado y renderizar, actualizamos todas las puntuaciones visibles
             Object.keys(players).forEach(playerId => updatePlayerScoreDisplay(playerId));
         }
 
@@ -511,7 +556,6 @@
                 fullRender();
             }
 
-
             // 1. Escucha clics en los checkboxes para guardar el estado Y actualizar la puntuación
             tableBody.addEventListener('change', (event) => {
                 if (event.target.type === 'checkbox') {
@@ -538,9 +582,10 @@
                 const header = event.target.closest('th[data-question-id]');
                 if (header) showQuestionModal(header.dataset.questionId);
             });
+            
+            // 4. Se eliminó el listener para la edición del título.
 
-
-            // 4. Listeners para cerrar modales
+            // 5. Listeners para cerrar modales
             document.getElementById('modal-close').addEventListener('click', () => hideModal(playerModal));
             document.getElementById('modal-q-close').addEventListener('click', () => hideModal(questionModal));
             playerModal.addEventListener('click', (e) => {
