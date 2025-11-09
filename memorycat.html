@@ -4,16 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MemCat</title>
+    <title>MemoryCat</title>
 
     <!-- 
     OBJETIVO: Aplicación de seguimiento de aciertos con estabilidad garantizada.
     - FILAS: Jugadores.
-    - COLUMNAS: Preguntas (etiquetadas con su campo 'title').
+    - COLUMNAS: Preguntas (Carga Híbrida: Firestore si está disponible, si no, estáticas).
     - INTERSECCIÓN: Checkboxes (aciertos/fallos).
-    - PERSISTENCIA DE ACIERTOS: La clave es PLAYER_ID-QUESTION_ID (UUID/ID estable), lo que garantiza la persistencia aunque las preguntas se reordenen.
+    - PERSISTENCIA DE ACIERTOS: La clave es PLAYER_ID-QUESTION_ID (ID estable).
     - PUNTUACIÓN: Se calcula sumando el número de palabras de la respuesta de cada pregunta acertada.
-    - PERSISTENCIA: Los datos se guardan en el navegador (localStorage) para este ejemplo.
+    - PERSISTENCIA: Jugadores y Aciertos usan localStorage.
     -->
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -83,7 +83,7 @@
         
         <!-- Contenedor del Título y el Botón de Ajustes -->
         <div class="flex justify-between items-center mb-6">
-            <!-- Botón de Ajustes (AHORA ABRE EL MODAL DE IMPORTAR/EXPORTAR) -->
+            <!-- Botón de Ajustes -->
             <button id="settings-btn" class="text-gray-500 hover:text-gray-700 p-2 rounded-full transition duration-150 ease-in-out" aria-label="Ajustes de Importación y Exportación">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -92,11 +92,20 @@
             </button>
 
             <h1 class="text-3xl font-bold text-center text-gray-800 flex-grow">
-                MemCat (Juego de Aciertos)
+                MemoryCat (Juego de Aciertos)
             </h1>
             <div class="w-10 h-10"></div> <!-- Placeholder para alinear el título -->
         </div>
 
+        <!-- Indicador de Carga de Preguntas (oculto en modo estático) -->
+        <div id="loading-indicator" class="text-center py-4 text-lg font-medium text-blue-600 hidden">
+            Intentando cargar preguntas de Firestore...
+        </div>
+        
+        <!-- Mensaje de Cero Preguntas -->
+        <div id="no-questions-message" class="text-center py-8 text-xl font-medium text-gray-500 border-2 border-dashed border-gray-300 rounded-lg hidden">
+            No hay preguntas cargadas (modo estático).
+        </div>
 
         <!-- TABLA DE SEGUIMIENTO (El corazón de la app) -->
         <div class="table-container rounded-xl border border-gray-300 shadow-lg">
@@ -141,10 +150,9 @@
                 <button id="modal-q-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
             </div>
             <div class="space-y-4">
-                 <!-- CAMPO DE TÍTULO (AHORA DE SOLO LECTURA) -->
+                 <!-- CAMPO DE TÍTULO (SOLO LECTURA) -->
                 <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
                     <h4 class="text-sm font-semibold text-blue-700 uppercase tracking-wider mb-1">Título</h4>
-                    <!-- Se ha cambiado el INPUT por un P para hacerlo de solo lectura -->
                     <p id="modal-q-title-display" class="w-full text-gray-800 text-xl font-bold"></p>
                 </div>
                 <!-- FIN CAMPO DE TÍTULO -->
@@ -165,237 +173,140 @@
         </div>
     </div>
 
-    <!-- NUEVO: Modal (Ajustes: Importar/Exportar) -->
+    <!-- Modal (Ajustes: Importar/Exportar) -->
     <div id="settings-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg transform transition-all scale-100" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Importar / Exportar Datos</h2>
+                <h2 class="text-2xl font-bold text-gray-800">Importar / Exportar Preguntas</h2>
                 <button id="modal-settings-close" class="text-gray-500 hover:text-gray-800 text-3xl" aria-label="Cerrar">&times;</button>
             </div>
             
-            <p class="text-gray-600 mb-6">Selecciona el tipo de datos para importar o exportar en formato JSON.</p>
-
-            <!-- Contenedor para Jugadores -->
-            <div class="mb-5 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-                <h3 class="text-lg font-semibold text-indigo-800 mb-3">1. Jugadores</h3>
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <button id="export-players-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
-                        Exportar Jugadores
-                    </button>
-                    <!-- Input de archivo oculto para Importar Jugadores -->
-                    <label for="import-players-file" class="flex-1 text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-150">
-                        Importar Jugadores (JSON)
-                        <input type="file" id="import-players-file" class="hidden" accept=".json" data-collection-key="players">
-                    </label>
-                </div>
+            <!-- EXPORTAR -->
+            <div class="mb-6 border-b pb-4">
+                <h3 class="text-xl font-semibold mb-2 text-gray-700">1. Exportar Preguntas Actuales</h3>
+                <p class="text-gray-600 text-sm mb-3">Copia las preguntas actuales (ya sean de Firestore o estáticas) como un JSON para guardarlas.</p>
+                <button id="export-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Copiar JSON de Preguntas</button>
             </div>
 
-            <!-- Contenedor para Preguntas -->
-            <div class="mb-5 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h3 class="text-lg font-semibold text-green-800 mb-3">2. Preguntas</h3>
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <button id="export-questions-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
-                        Exportar Preguntas
-                    </button>
-                    <!-- Input de archivo oculto para Importar Preguntas -->
-                    <label for="import-questions-file" class="flex-1 text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-150">
-                        Importar Preguntas (JSON)
-                        <input type="file" id="import-questions-file" class="hidden" accept=".json" data-collection-key="questions">
-                    </label>
-                </div>
+            <!-- IMPORTAR -->
+            <div class="mb-4">
+                <h3 class="text-xl font-semibold mb-2 text-gray-700">2. Importar Preguntas (JSON)</h3>
+                <p class="text-sm text-red-600 mb-2">Advertencia: Las preguntas importadas se guardarán en Firestore (si está conectado) y actualizarán la tabla.</p>
+                <textarea id="import-json-area" rows="6" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" placeholder='[{"id": "qX", "title": "...", "enunciado": "...", "respuesta": "..."}]'></textarea>
+                <button id="import-btn" class="w-full mt-3 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">Importar y Actualizar Firestore</button>
             </div>
 
-            <!-- Contenedor para Aciertos (Hits) -->
-            <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <h3 class="text-lg font-semibold text-yellow-800 mb-3">3. Aciertos</h3>
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <button id="export-hits-btn" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
-                        Exportar Aciertos
-                    </button>
-                    <!-- Input de archivo oculto para Importar Aciertos -->
-                    <label for="import-hits-file" class="flex-1 text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-150">
-                        Importar Aciertos (JSON)
-                        <input type="file" id="import-hits-file" class="hidden" accept=".json" data-collection-key="hits">
-                    </label>
-                </div>
-            </div>
-
-            <div id="import-message" class="mt-4 text-center text-sm font-medium hidden"></div>
+            <div id="settings-message" class="mt-4 p-3 rounded-lg text-sm hidden"></div>
         </div>
     </div>
 
 
     <script type="module">
-        // La implementación actual utiliza localStorage para persistencia.
-        // Las importaciones de Firebase se mantienen para futuras integraciones.
+        // Importaciones de Firebase (se cargarán solo si __firebase_config existe)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Añadimos doc y setDoc para la escritura de datos
+        import { getFirestore, collection, onSnapshot, setLogLevel, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Configuración y Variables de Firebase (Obligatorias) ---
+        // Verificamos si las variables de Firebase existen para determinar el modo de carga
+        const hasFirebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config !== 'null';
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const firebaseConfig = hasFirebaseConfig ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let app;
         let db;
         let auth;
-        let userId = null;
+        let userId = null; 
+        let isAuthReady = false; 
         
-        // --- Utilidades ---
-
-        /**
-         * Genera un identificador único (UUID v4)
-         */
-        function generateUUID() {
-            return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-            );
-        }
-
-        /**
-         * Cuenta las palabras en una cadena de texto para asignar puntos. 
-         * @param {string} str La cadena de texto (la respuesta).
-         * @returns {number} El número de palabras.
-         */
-        function countWords(str) {
-            if (!str) return 0;
-            // Usa una expresión regular para dividir por espacios y filtrar cadenas vacías
-            return str.split(/\s+/).filter(word => word.length > 0).length;
-        }
-
-        // --- Variables Globales y Estado ---
+        // --- Datos Estáticos de Reserva ---
         
-        // La fuente de datos de las preguntas (ARRAY). El campo 'id' DEBE ser un UUID o un ID estable.
-        let initialQuestionsData = [
-            { 
-                id: generateUUID(), // UUID para las preguntas reales
-                title: 'Mandamientos', 
-                enunciado: '¿Cuántos son los Mandamientos de la ley de Dios?', 
-                respuesta: 'Los Mandamientos de la Ley de Dios son diez', // 6 palabras = 6 puntos
-            },
-             { 
-                id: generateUUID(), // UUID para las preguntas reales
-                title: 'Penitencia', 
-                enunciado: '¿Cuál es el sacramento de la penitencia?', 
-                respuesta: 'La confesión es el sacramento de la penitencia.' // 5 palabras = 5 puntos
-            },
-            {
-                id: generateUUID(), // UUID para las preguntas reales
-                title: 'Pecado Original', 
-                enunciado: '¿Qué es el pecado original?', 
-                respuesta: 'El pecado original es aquel con el que nacemos todos' // 8 palabras = 8 puntos
-            }
+        // Datos de preguntas de reserva (Fallback)
+        const defaultQuestionsData = [
+            { id: 'q1', title: 'Q1: CSS Grid', enunciado: 'Explica brevemente qué problema resuelve CSS Grid Layout.', respuesta: 'CSS Grid resuelve el problema de la maquetación bidimensional compleja, permitiendo al desarrollador definir filas y columnas de manera precisa para el diseño de toda una página o componente.', puntos: 25 },
+            { id: 'q2', title: 'Q2: Scope JS', enunciado: '¿Cuál es la principal diferencia entre `let` y `var` en JavaScript respecto al scope?', respuesta: 'La principal diferencia es que var tiene un scope de función o global, mientras que let tiene un scope de bloque, limitado a las llaves {} donde es declarado.', puntos: 28 },
+            { id: 'q3', title: 'Q3: HTTP Status', enunciado: '¿Qué significa el código de estado HTTP 403?', respuesta: 'El código 403 Forbidden indica que el servidor se niega a autorizar la petición, a pesar de que la sintaxis de la petición es correcta. Esto generalmente se debe a permisos insuficientes o configuración de seguridad.', puntos: 40 },
+            { id: 'q4', title: 'Q4: Git Rebase', enunciado: '¿Para qué se utiliza el comando `git rebase`?', respuesta: 'Git rebase se utiliza para integrar cambios de una rama a otra, reescribiendo el historial de commits y haciendo que parezca que los cambios se aplicaron secuencialmente, lo que resulta en un historial de proyecto más limpio y lineal.', puntos: 45 },
+            { id: 'q5', title: 'Q5: SPA', enunciado: 'Define el concepto de Single Page Application (SPA).', respuesta: 'Una Single Page Application o SPA es una aplicación web que carga una única página HTML y actualiza dinámicamente el contenido principal mediante JavaScript, sin requerir una recarga completa de la página.', puntos: 30 },
+            { id: 'q6', title: 'Q6: NoSQL', enunciado: 'Menciona una ventaja clave de las bases de datos NoSQL sobre las relacionales.', respuesta: 'Una ventaja clave de NoSQL es la escalabilidad horizontal y la flexibilidad del esquema, lo que permite manejar grandes volúmenes de datos no estructurados o semiestructurados y distribuir la carga fácilmente entre múltiples servidores.', puntos: 40 },
         ];
 
-        // La lista completa de preguntas con los puntos y títulos calculados
-        let questions = []; 
-
-        // La fuente de datos de los jugadores (OBJECT). Con IDs estables.
+        let questions = defaultQuestionsData; // Inicializamos con las preguntas estáticas
+        
+        // La fuente de datos de los jugadores (OBJECT). Se queda en localStorage por ahora.
         let players = {
             'player-pepe': { id: 'player-pepe', name: 'Pepe Pérez', course: 'Curso A' },
             'player-juan': { id: 'player-juan', name: 'Juan Jimenez', course: 'Curso B' },
             'player-ana': { id: 'player-ana', name: 'Ana García', course: 'Curso C' }
         };
 
-        // Estado de aciertos guardado como { playerId-questionId: true/false }
+        // Estado de aciertos guardado como { playerId-questionId: true/false }. Se queda en localStorage por ahora.
         let hitsState = {}; 
 
-        // --- Persistencia (localStorage) ---
-        const HITS_KEY = 'memcat_hits';
-        // CLAVE ADICIONAL para guardar la lista de preguntas
-        const QUESTIONS_KEY = 'memcat_questions'; 
-        // CLAVE NUEVA para guardar la lista de jugadores
-        const PLAYERS_KEY = 'memcat_players'; 
+        // --- Elementos de UI ---
+        const tableHeadRow = document.querySelector('table thead tr');
+        const tableBody = document.getElementById('player-grid');
+        const playerModal = document.getElementById('player-modal');
+        const questionModal = document.getElementById('question-modal');
+        const settingsModal = document.getElementById('settings-modal'); 
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const noQuestionsMessage = document.getElementById('no-questions-message');
+        const settingsMessage = document.getElementById('settings-message');
+
+        // --- Utilidades ---
+        function countWords(str) {
+            if (!str) return 0;
+            return str.split(/\s+/).filter(word => word.length > 0).length;
+        }
+
+        /** Muestra un mensaje temporal en el modal de ajustes */
+        function showSettingsMessage(message, type = 'success') {
+            settingsMessage.textContent = message;
+            settingsMessage.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
+            if (type === 'error') {
+                settingsMessage.classList.add('bg-red-100', 'text-red-700');
+            } else {
+                settingsMessage.classList.add('bg-green-100', 'text-green-700');
+            }
+            setTimeout(() => {
+                settingsMessage.classList.add('hidden');
+            }, 5000);
+        }
+
+        // --- Persistencia (localStorage para Jugadores y Aciertos) ---
+        const HITS_KEY = 'memorycat_hits';
+        const PLAYERS_KEY = 'memorycat_players'; 
 
         /**
-         * Guarda el estado de los aciertos, las preguntas, y los jugadores.
+         * Guarda el estado de los aciertos y los jugadores en localStorage.
          */
-        function saveState() {
+        function saveLocalState() {
             localStorage.setItem(HITS_KEY, JSON.stringify(hitsState));
-            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(questions)); 
-            localStorage.setItem(PLAYERS_KEY, JSON.stringify(players)); // Guarda el objeto de jugadores
+            localStorage.setItem(PLAYERS_KEY, JSON.stringify(players)); 
         }
 
         /**
-         * Carga el estado de los aciertos, las preguntas, y los jugadores.
+         * Carga el estado de los aciertos y los jugadores desde localStorage.
          */
-        function loadState() {
-            // 1. Carga Jugadores
+        function loadLocalState() {
             const storedPlayers = localStorage.getItem(PLAYERS_KEY);
             if (storedPlayers) {
                 players = JSON.parse(storedPlayers);
             } 
             
-            // 2. Carga Preguntas
-            const storedQuestions = localStorage.getItem(QUESTIONS_KEY);
-            if (storedQuestions) {
-                questions = JSON.parse(storedQuestions);
-            } else {
-                // Si no hay preguntas guardadas, inicializamos la estructura completa.
-                // initializeData() llama a saveState(), guardando todo (incluidos los jugadores por defecto).
-                 initializeData();
-                 return;
-            }
-
-            // 3. Carga el estado de los aciertos
             const storedHits = localStorage.getItem(HITS_KEY);
             if (storedHits) {
                 hitsState = JSON.parse(storedHits);
             } else {
-                 hitsState = {}; // Si no hay hits, inicializa vacío
+                 hitsState = {}; 
             }
             
-            // Si llegamos aquí y no se llamó a initializeData, guardamos el estado 
-            // (Esto asegura que los jugadores por defecto se persistan si las preguntas ya existían).
-            saveState();
+            saveLocalState();
         }
         
-        /**
-         * Inicializa la estructura de datos de las preguntas, garantizando 23 preguntas.
-         * Se llama solo si no hay datos de preguntas en localStorage.
-         */
-        function initializeData() {
-            // Número fijo de preguntas a generar (23 para llenar la tabla)
-            const maxQuestions = 23;
-            questions = [];
-            
-            const defaultPlaceholderPoints = 1; 
-
-            for (let i = 0; i < maxQuestions; i++) {
-                // Usamos la pregunta inicial si existe
-                const existingQuestion = initialQuestionsData.find((q, index) => index === i); 
-                let q = existingQuestion ? {...existingQuestion} : {}; // Clonamos para no modificar la fuente original
-
-                // Si no existe, creamos un placeholder con ID estable y título numérico.
-                if (!existingQuestion) {
-                     // ID estable para el placeholder basado en su índice
-                     const stablePlaceholderId = 'placeholder-q-' + (i + 1); 
-                     
-                     q.id = stablePlaceholderId;
-                     q.title = 'Q-' + (i + 1);
-                     q.enunciado = 'Pregunta de Relleno ' + (i + 1);
-                     q.respuesta = 'Respuesta corta.';
-                } 
-                
-                // CALCULO CLAVE: Los puntos son el número de palabras en la respuesta.
-                const calculatedPoints = countWords(q.respuesta) > 0 ? countWords(q.respuesta) : defaultPlaceholderPoints;
-
-                // Generación de la estructura final
-                questions.push({
-                    ...q,
-                    puntos: calculatedPoints // Asignamos los puntos calculados
-                });
-            }
-            // Guardamos el estado inicial de las preguntas, jugadores y hits (vacío)
-            saveState(); 
-        }
-
-        /**
-         * Obtiene la ID de la pregunta a partir de la ID del acierto (que tiene el formato playerId-questionId).
-         */
         function getQuestionIdFromHitId(hitId, playerId) {
-            // El ID de la pregunta es lo que queda después del ID del jugador y el guión.
             if (hitId.startsWith(playerId + '-')) {
                 return hitId.substring(playerId.length + 1);
             }
@@ -404,25 +315,16 @@
 
         /**
          * Calcula la puntuación total de un jugador.
-         * @param {string} playerId 
-         * @returns {number} Puntuación total.
          */
         function calculatePlayerScore(playerId) {
-            // Filtra todos los IDs de aciertos que comienzan con el ID del jugador
             const playerHitIds = Object.keys(hitsState).filter(key => key.startsWith(playerId + '-'));
             let score = 0;
             
             playerHitIds.forEach(hitId => {
-                // Solo suma si la casilla está marcada como acertada (true)
                 if (hitsState[hitId]) { 
-                    
                     const questionId = getQuestionIdFromHitId(hitId, playerId); 
-                    
                     if (questionId) {
-                        // Buscamos la pregunta por su ID (UUID/ID estable) para obtener sus puntos
                         const question = questions.find(q => q.id === questionId);
-
-                        // Si la pregunta existe y tiene puntos, los suma.
                         const points = question && typeof question.puntos === 'number' ? question.puntos : 0;
                         score += points;
                     }
@@ -433,89 +335,58 @@
 
         // --- Renderizado y Lógica de Puntuación ---
 
-        const tableHeadRow = document.querySelector('table thead tr');
-        const tableBody = document.getElementById('player-grid');
-        const playerModal = document.getElementById('player-modal');
-        const questionModal = document.getElementById('question-modal');
-        const settingsModal = document.getElementById('settings-modal'); // NUEVO
-        const questionTitleDisplay = document.getElementById('modal-q-title-display'); 
-        const importMessage = document.getElementById('import-message'); // Mensaje de feedback
-
         
-        /**
-         * Muestra un modal
-         */
+        /** Muestra un modal */
         function showModal(modalElement) {
             modalElement.classList.add('open');
             modalElement.setAttribute('aria-hidden', 'false');
         }
 
-        /**
-         * Oculta un modal
-         */
+        /** Oculta un modal */
         function hideModal(modalElement) {
             modalElement.classList.remove('open');
             modalElement.setAttribute('aria-hidden', 'true');
         }
         
-        /**
-         * Muestra un mensaje de éxito o error en el modal de importación/exportación.
-         */
-        function showImportMessage(message, isError = true) {
-            importMessage.textContent = message;
-            importMessage.classList.remove('hidden', 'text-red-600', 'text-green-600');
-            importMessage.classList.add(isError ? 'text-red-600' : 'text-green-600');
-            setTimeout(() => {
-                importMessage.classList.add('hidden');
-            }, 5000);
-        }
-
-        /**
-         * Renderiza la cabecera de la tabla (Jugador | Título 1 | Título 2...)
-         */
+        /** Renderiza la cabecera de la tabla */
         function initializeAndRenderHeader() {
             tableHeadRow.innerHTML = '';
             
-            // Primera columna: Jugador / Puntos (Sticky)
             let headerHTML = '<th class="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider sticky left-0 bg-gray-50">Jugador / Puntos</th>';
             
-            // Columnas de preguntas (usando el campo 'title' de cada pregunta)
             questions.forEach(q => {
-                // Usamos q.title para la cabecera
                 headerHTML += '<th data-question-id="' + q.id + '" class="px-3 py-3 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider cursor-pointer hover:bg-blue-100 transition duration-150 rounded-t-lg">' + q.title + '</th>';
             });
 
             tableHeadRow.innerHTML = headerHTML;
         }
 
-        /**
-         * Renderiza las filas de la tabla (Jugadores y Checkboxes)
-         */
+        /** Renderiza las filas de la tabla (Jugadores y Checkboxes) */
         function renderTable() {
             tableBody.innerHTML = ''; 
             
-            // Aseguramos que players sea un array de valores (aunque se almacene como objeto)
+            if (questions.length === 0) {
+                noQuestionsMessage.classList.remove('hidden');
+                return;
+            } else {
+                 noQuestionsMessage.classList.add('hidden');
+            }
+
             Object.values(players).forEach(player => { 
                 const tr = document.createElement('tr');
-                
-                // Celda del jugador: Ahora muestra el nombre Y la puntuación en un span
                 const initialScore = calculatePlayerScore(player.id);
                 
                 let rowHTML = `
                     <td class="p-3 sm:p-4 text-md font-medium text-gray-900 sticky left-0 bg-white z-5">
-                        <!-- Botón que muestra el modal de detalles del jugador -->
                         <button data-player-id="${player.id}" class="player-button w-full text-left bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl transition duration-150 ease-in-out flex justify-between items-center">
                             <span>${player.name}</span>
-                            <!-- Span para la puntuación en tiempo real -->
                             <span id="score-${player.id}" class="bg-white text-blue-600 px-2 py-1 rounded-full text-sm font-extrabold ml-4">${initialScore} Pts</span>
                         </button>
                     </td>`;
                 
-                // Celdas de checkboxes (seguimiento de aciertos)
                 questions.forEach(q => {
-                    // CLAVE DE PERSISTENCIA: player.id - q.id (UUID o ID estable)
                     const checkboxId = player.id + '-' + q.id; 
-                    const isChecked = hitsState[checkboxId] || false; // Carga el estado del acierto
+                    const isChecked = hitsState[checkboxId] || false; 
 
                     rowHTML += `<td class="p-3 sm:p-4 text-center">
                         <input type="checkbox" id="${checkboxId}" data-player-id="${player.id}" data-question-id="${q.id}" class="form-checkbox text-green-500 focus:ring-2 focus:ring-green-400 rounded cursor-pointer" aria-label="${player.name}, pregunta ${q.title}" ${isChecked ? 'checked' : ''}>
@@ -527,10 +398,7 @@
             });
         }
         
-        /**
-         * Actualiza el elemento SPAN de puntuación para un jugador específico en la tabla.
-         * @param {string} playerId 
-         */
+        /** Actualiza el elemento SPAN de puntuación para un jugador específico en la tabla. */
         function updatePlayerScoreDisplay(playerId) {
             const score = calculatePlayerScore(playerId);
             const scoreSpan = document.getElementById(`score-${playerId}`);
@@ -539,215 +407,324 @@
             }
             // También actualizamos el modal si está abierto
             const modalName = document.getElementById('modal-name');
-            // Nota: Se asume que players[playerId].name es el inicio del texto en modalName
             if(playerModal.classList.contains('open') && modalName && modalName.textContent.startsWith(players[playerId].name)) {
                 document.getElementById('modal-points').textContent = score; 
             }
         }
 
-
-        /**
-         * Muestra y calcula la puntuación del jugador en el modal. 
-         */
+        /** Muestra y calcula la puntuación del jugador en el modal. */
         function showPlayerModal(playerId) {
              const player = players[playerId];
              if (!player) return;
 
              const score = calculatePlayerScore(playerId);
             
-            // Poblar y mostrar modal
-            const modalName = document.getElementById('modal-name');
-            const modalCourse = document.getElementById('modal-course');
-            const modalPoints = document.getElementById('modal-points');
-
-            modalName.textContent = player.name;
-            modalCourse.textContent = 'Curso: ' + player.course;
-            modalPoints.textContent = score; // Muestra la PUNTUACIÓN
+            document.getElementById('modal-name').textContent = player.name;
+            document.getElementById('modal-course').textContent = 'Curso: ' + player.course;
+            document.getElementById('modal-points').textContent = score; 
             showModal(playerModal);
         }
 
-        /**
-         * Muestra el modal con los detalles de la pregunta.
-         */
+        /** Muestra el modal con los detalles de la pregunta. */
         function showQuestionModal(questionId) {
             const question = questions.find(q => q.id === questionId);
             if (!question) return;
 
-            // Almacena el ID de la pregunta (aunque no sea editable, es buena práctica)
             questionModal.dataset.editingQuestionId = questionId;
 
-            // Se ha modificado para usar el elemento P de solo lectura
-            questionTitleDisplay.textContent = question.title;
-
-            // Cargar el resto de la información
-            document.getElementById('modal-q-enunciado').textContent = question.enunciado;
-            document.getElementById('modal-q-respuesta').textContent = question.respuesta;
+            document.getElementById('modal-q-title-display').textContent = question.title;
+            document.getElementById('modal-q-enunciado').textContent = question.enunciado || 'N/A';
+            document.getElementById('modal-q-respuesta').textContent = question.respuesta || 'N/A';
             document.getElementById('modal-q-puntos').textContent = question.puntos; 
             
             showModal(questionModal);
         }
+
+        // --- Lógica de Firebase y Persistencia Remota ---
         
-        // --- Lógica de Importación/Exportación ---
-
         /**
-         * Exporta datos JSON a un archivo descargable.
-         * @param {object} data Objeto o Array a exportar.
-         * @param {string} filename Nombre del archivo.
+         * Guarda una sola pregunta en Firestore.
+         * @param {Object} question - La pregunta a guardar.
          */
-        function exportData(data, filename) {
-            const jsonStr = JSON.stringify(data, null, 2);
-            const blob = new Blob([jsonStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
+        async function saveQuestionToFirestore(question) {
+            if (!db || !isAuthReady) {
+                console.warn("Firestore no está listo. La pregunta no se guardó en la DB.");
+                return;
+            }
+
+            // Excluir la propiedad 'puntos' ya que es calculada.
+            const { puntos, ...dataToSave } = question; 
             
-            // Crear un enlace temporal para la descarga
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url); // Limpiar URL del objeto
-            
-            showImportMessage(`Datos de ${filename.replace('memcat_', '').replace('.json', '')} exportados con éxito.`, false);
+            try {
+                const questionDocRef = doc(db, `artifacts/${appId}/public/data/preguntas`, question.id);
+                await setDoc(questionDocRef, dataToSave, { merge: true });
+                console.log(`Pregunta ${question.id} guardada/actualizada en Firestore.`);
+            } catch (error) {
+                console.error(`Error al guardar la pregunta ${question.id} en Firestore:`, error);
+            }
         }
 
         /**
-         * Importa datos JSON desde un archivo y actualiza la colección.
-         * @param {Event} event Evento de cambio del input de archivo.
-         * @param {string} collectionKey Clave de la colección ('players', 'questions', 'hits').
+         * Configura el listener de Firestore para la colección 'preguntas'.
          */
-        function importData(event, collectionKey) {
-            const file = event.target.files[0];
-            if (!file) return;
+        function setupQuestionsListener() {
+            if (!db || !isAuthReady) return;
+            
+            const questionsColRef = collection(db, `artifacts/${appId}/public/data/preguntas`);
+            loadingIndicator.classList.remove('hidden');
+            loadingIndicator.textContent = "Intentando cargar preguntas de Firestore...";
 
-            const reader = new FileReader();
 
-            reader.onload = (e) => {
-                try {
-                    const importedData = JSON.parse(e.target.result);
+            // onSnapshot: Listener en tiempo real
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const unsubscribe = onSnapshot(questionsColRef, (snapshot) => {
+                const fetchedQuestions = [];
 
-                    if (collectionKey === 'players') {
-                        if (typeof importedData !== 'object' || Array.isArray(importedData)) {
-                            throw new Error('El archivo de Jugadores debe ser un objeto.');
-                        }
-                        players = importedData;
-                        saveState();
-                        fullRender(); // Re-renderizar todo
-                        showImportMessage('Jugadores importados y guardados con éxito.', false);
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const calculatedPoints = countWords(data.respuesta) > 0 ? countWords(data.respuesta) : 1;
 
-                    } else if (collectionKey === 'questions') {
-                         if (!Array.isArray(importedData)) {
-                            throw new Error('El archivo de Preguntas debe ser un array.');
-                        }
-                        // Recalcular puntos para las preguntas importadas (garantizar consistencia)
-                        questions = importedData.map(q => ({
-                            ...q,
-                            puntos: countWords(q.respuesta) > 0 ? countWords(q.respuesta) : 1
-                        }));
-                        saveState();
-                        fullRender(); // Re-renderizar todo
-                        showImportMessage('Preguntas importadas y guardadas con éxito.', false);
-                        
-                    } else if (collectionKey === 'hits') {
-                        if (typeof importedData !== 'object' || Array.isArray(importedData)) {
-                            throw new Error('El archivo de Aciertos debe ser un objeto.');
-                        }
-                        hitsState = importedData;
-                        saveState();
-                        // Actualizar la vista sin recrear la estructura de players/questions
-                        initializeAndRenderHeader(); 
-                        renderTable(); 
-                        Object.keys(players).forEach(playerId => updatePlayerScoreDisplay(playerId)); 
-                        showImportMessage('Aciertos importados y guardados con éxito.', false);
+                    fetchedQuestions.push({
+                        id: doc.id,
+                        title: data.title || doc.id,
+                        enunciado: data.enunciado || '',
+                        respuesta: data.respuesta || '',
+                        puntos: calculatedPoints 
+                    });
+                });
 
-                    }
-
-                    // Limpiar el input file para permitir la misma importación de nuevo
-                    event.target.value = ''; 
-
-                } catch (error) {
-                    console.error("Error al importar datos:", error);
-                    showImportMessage('ERROR: El archivo no es un JSON válido o tiene un formato incorrecto.', true);
-                    event.target.value = ''; // Limpiar el input file
+                if (fetchedQuestions.length > 0) {
+                    questions = fetchedQuestions.sort((a, b) => a.title.localeCompare(b.title));
+                    loadingIndicator.classList.add('hidden');
+                    console.log(`Preguntas de Firestore actualizadas. Total: ${questions.length}`);
+                } else {
+                    // Si Firestore está vacío, usamos el fallback
+                    questions = defaultQuestionsData; 
+                    loadingIndicator.classList.add('hidden');
+                    console.log("Firestore vacío. Usando preguntas de reserva estáticas.");
                 }
-            };
-
-            reader.readAsText(file);
+                
+                // Siempre re-renderizar al recibir datos, incluso si es el fallback
+                fullRender();
+                
+            }, (error) => {
+                console.error("Error al escuchar cambios en Firestore. Usando datos estáticos:", error);
+                
+                // En caso de error (configuración incorrecta, permisos, etc.), usamos el fallback
+                questions = defaultQuestionsData; 
+                loadingIndicator.classList.add('hidden');
+                noQuestionsMessage.classList.remove('hidden');
+                noQuestionsMessage.textContent = 'Error de conexión con Firestore. Usando preguntas de reserva.';
+                
+                // Re-renderizar con los datos estáticos
+                fullRender();
+                
+                // Detener el listener de snapshot para evitar reintentos continuos
+                // No llamamos a unsubscribe aquí porque está fuera de su alcance.
+                // En un entorno real se manejaría mejor el scope.
+                console.warn("Listener de Firestore detenido debido a un error.");
+            });
         }
-        // --- FIN Lógica de Importación/Exportación ---
-
-
+        
         /**
-         * Inicializa la aplicación: carga estado (o inicializa), renderiza.
+         * Realiza la carga de datos locales y el renderizado.
+         * Llamado por el listener de Firestore o directamente si no hay Firebase.
          */
         function fullRender() {
-            // Carga o inicializa los datos de preguntas, jugadores y aciertos.
-            loadState(); 
+            // Carga jugadores y aciertos de localStorage
+            loadLocalState(); 
             
-            // Renderiza la interfaz
+            // Renderiza la interfaz con la lista actual de preguntas (estáticas o de Firestore)
             initializeAndRenderHeader(); 
             renderTable();               
             
-            // Después de cargar el estado y renderizar, actualizamos todas las puntuaciones visibles
+            // Actualiza las puntuaciones iniciales
             Object.keys(players).forEach(playerId => updatePlayerScoreDisplay(playerId));
         }
 
+        // --- Lógica de Importación/Exportación ---
+
+        /** Exporta las preguntas actuales a JSON y las copia al portapapeles. */
+        function exportQuestions() {
+            // Clonamos para eliminar la propiedad 'puntos' que es calculada
+            const questionsToExport = questions.map(q => {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { puntos, ...rest } = q;
+                return rest;
+            });
+            const json = JSON.stringify(questionsToExport, null, 2);
+            
+            // Copiar al portapapeles
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = json;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showSettingsMessage('Preguntas copiadas al portapapeles como JSON.', 'success');
+            } catch (err) {
+                showSettingsMessage('Error al copiar: intente seleccionar y copiar el texto manualmente.', 'error');
+            }
+            document.body.removeChild(tempTextArea);
+            
+            return json;
+        }
+
+        /** Importa preguntas desde JSON, actualiza Firestore y fuerza la recarga. */
+        async function importQuestions() {
+            const jsonArea = document.getElementById('import-json-area');
+            const jsonString = jsonArea.value.trim();
+
+            if (!jsonString) {
+                showSettingsMessage('Por favor, pegue el JSON de las preguntas para importar.', 'error');
+                return;
+            }
+
+            let importedData;
+            try {
+                importedData = JSON.parse(jsonString);
+                if (!Array.isArray(importedData)) throw new Error('El JSON debe ser un array.');
+            } catch (e) {
+                showSettingsMessage('Error al parsear el JSON: ' + e.message, 'error');
+                return;
+            }
+
+            let validCount = 0;
+            let invalidCount = 0;
+
+            for (const item of importedData) {
+                // Validación básica de la estructura
+                if (item.id && item.title && item.enunciado && item.respuesta) {
+                    if (isAuthReady) {
+                        await saveQuestionToFirestore(item); // Guardar en Firestore
+                    } else {
+                        // Si no está listo, solo lo contamos (no actualizamos la lista local directamente aquí,
+                        // ya que la lista local se actualizará con fullRender al final si no hay Firebase)
+                    }
+                    validCount++;
+                } else {
+                    invalidCount++;
+                }
+            }
+
+            if (validCount > 0) {
+                // Si la conexión a Firebase está activa, el onSnapshot ya se encargará de
+                // actualizar la lista 'questions' y llamar a fullRender().
+                if (!isAuthReady) {
+                    // Si NO hay Firebase, solo forzamos el renderizado con los datos estáticos de respaldo.
+                    // En este modo, la importación JSON es temporal y solo de demostración.
+                    // Para un uso persistente sin Firebase, deberíamos sobrescribir 'defaultQuestionsData',
+                    // lo cual es una complejidad que evitamos ya que la app DEBE usar Firebase.
+                    showSettingsMessage(`Importación de ${validCount} preguntas finalizada. La aplicación está en modo estático, estas preguntas NO se han guardado permanentemente.`, 'error');
+                    // Para evitar confusión, limpiamos el área para no reintentar
+                    jsonArea.value = '';
+                } else {
+                     showSettingsMessage(`Importación de ${validCount} preguntas iniciada. Firestore se actualizará en breve...`, 'success');
+                     jsonArea.value = '';
+                }
+            } else {
+                showSettingsMessage('No se encontraron preguntas válidas con ID, título, enunciado y respuesta.', 'error');
+            }
+            
+            // Si no hay Firebase, forzamos el renderizado aquí para que el usuario vea los cambios
+            if (!isAuthReady && validCount > 0) {
+                 // En modo estático, simplemente reemplazamos la lista con las importadas temporalmente
+                 questions = importedData.map(item => ({ 
+                     ...item, 
+                     puntos: countWords(item.respuesta) > 0 ? countWords(item.respuesta) : 1 
+                 }));
+                 fullRender();
+            }
+        }
+
+
         // --- Inicialización y Event Listeners ---
         window.addEventListener('load', () => {
-            // Inicializar Firebase (aunque no se use db/auth/userId, el setup es obligatorio)
-             if (firebaseConfig) {
+            
+            // 1. Inicialización y Autenticación Híbrida
+            if (hasFirebaseConfig) {
+                 // Modo Firebase
+                 setLogLevel('Debug');
                  app = initializeApp(firebaseConfig);
                  db = getFirestore(app);
                  auth = getAuth(app);
+                 
+                 loadingIndicator.classList.remove('hidden'); // Mostrar indicador mientras se autentica
 
-                 // Autenticación obligatoria
-                 const signIn = initialAuthToken 
-                    ? signInWithCustomToken(auth, initialAuthToken)
-                    : signInAnonymously(auth);
+                 onAuthStateChanged(auth, async (user) => {
+                     if (user) {
+                         userId = user.uid;
+                         isAuthReady = true;
+                         console.log("Firebase Auth successful. User ID:", userId);
+                     } else {
+                         // Intento de inicio de sesión con token o anónimo
+                         try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                            userId = auth.currentUser?.uid || crypto.randomUUID(); // Asegurar ID después de sign in
+                            isAuthReady = true;
 
-                 signIn.then(userCredential => {
-                     userId = userCredential.user.uid;
-                     console.log("Firebase Auth successful. User ID:", userId);
-                     // Continuar con la carga de la aplicación después de la autenticación
-                     fullRender();
-                 }).catch(error => {
-                     console.error("Firebase Auth failed:", error);
-                     // Si la autenticación falla, se ejecuta fullRender con datos locales
-                     fullRender();
+                         } catch (e) {
+                            console.error("Error en signInWithCustomToken/signInAnonymously:", e);
+                            isAuthReady = false; // Fallo de autenticación
+                         }
+                     }
+                     
+                     // Una vez autenticado (o fallido), iniciamos el listener de preguntas
+                     if (isAuthReady) {
+                        setupQuestionsListener();
+                     } else {
+                         // Si la autenticación falla, usamos el fallback directamente
+                         questions = defaultQuestionsData;
+                         loadingIndicator.classList.add('hidden');
+                         noQuestionsMessage.classList.remove('hidden');
+                         noQuestionsMessage.textContent = 'Error de autenticación. Usando preguntas de reserva.';
+                         fullRender();
+                     }
                  });
 
             } else {
-                console.warn("Firebase config not available. Running in local mode.");
+                // Modo Estático (Sin Firebase Config)
+                console.warn("Firebase config not available. Running in static mode.");
+                isAuthReady = false; 
+                loadingIndicator.classList.add('hidden');
+                noQuestionsMessage.classList.add('hidden'); // No es necesario si hay preguntas estáticas
+                questions = defaultQuestionsData; 
                 fullRender();
             }
 
-            // 1. Escucha clics en los checkboxes para guardar el estado Y actualizar la puntuación
+
+            // 2. Escucha clics en los checkboxes para guardar el estado Y actualizar la puntuación
             tableBody.addEventListener('change', (event) => {
                 if (event.target.type === 'checkbox') {
                     const checkbox = event.target;
-                    // El ID del checkbox (playerId-questionId/UUID) se usa como clave
+                    // El ID del checkbox (playerId-questionId/doc.id) se usa como clave
                     hitsState[checkbox.id] = checkbox.checked; 
-                    saveState(); // Guarda el estado en localStorage
+                    saveLocalState(); // Guarda el estado localmente
                     
-                    // LLAMADA CLAVE: Llama a la función de actualización visual.
+                    // Llama a la función de actualización visual.
                     const playerId = checkbox.dataset.playerId;
                     updatePlayerScoreDisplay(playerId); 
                 }
             });
 
-            // 2. Escucha clics en botones de jugador para ver la PUNTUACIÓN (Modal)
+            // 3. Escucha clics en botones de jugador para ver la PUNTUACIÓN (Modal)
             tableBody.addEventListener('click', (event) => {
                 const button = event.target.closest('.player-button');
                 if (button) showPlayerModal(button.dataset.playerId);
             });
 
-            // 3. Escucha clics en la cabecera para ver detalles de la Pregunta
+            // 4. Escucha clics en la cabecera para ver detalles de la Pregunta
             tableHeadRow.addEventListener('click', (event) => {
                 const header = event.target.closest('th[data-question-id]');
                 if (header) showQuestionModal(header.dataset.questionId);
             });
             
-            // 4. Listeners para cerrar modales (Jugador y Pregunta)
+            // 5. Listeners para cerrar modales
             document.getElementById('modal-close').addEventListener('click', () => hideModal(playerModal));
             document.getElementById('modal-q-close').addEventListener('click', () => hideModal(questionModal));
             playerModal.addEventListener('click', (e) => {
@@ -757,22 +734,16 @@
                  if (e.target === questionModal) hideModal(questionModal);
             });
             
-            // 5. NUEVOS Listeners para el Modal de Ajustes (Importar/Exportar)
+            // 6. Listener para el Modal de Ajustes (Importación/Exportación)
             document.getElementById('settings-btn').addEventListener('click', () => showModal(settingsModal));
             document.getElementById('modal-settings-close').addEventListener('click', () => hideModal(settingsModal));
             settingsModal.addEventListener('click', (e) => {
                  if (e.target === settingsModal) hideModal(settingsModal);
             });
 
-            // Listeners de Exportación
-            document.getElementById('export-players-btn').addEventListener('click', () => exportData(players, 'memcat_jugadores.json'));
-            document.getElementById('export-questions-btn').addEventListener('click', () => exportData(questions, 'memcat_preguntas.json'));
-            document.getElementById('export-hits-btn').addEventListener('click', () => exportData(hitsState, 'memcat_aciertos.json'));
-
-            // Listeners de Importación
-            document.getElementById('import-players-file').addEventListener('change', (e) => importData(e, 'players'));
-            document.getElementById('import-questions-file').addEventListener('change', (e) => importData(e, 'questions'));
-            document.getElementById('import-hits-file').addEventListener('change', (e) => importData(e, 'hits'));
+            // Conectar botones de I/E
+            document.getElementById('export-btn').addEventListener('click', exportQuestions);
+            document.getElementById('import-btn').addEventListener('click', importQuestions);
         });
 
     </script>
