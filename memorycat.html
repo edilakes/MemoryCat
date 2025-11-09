@@ -9,8 +9,9 @@
     <!-- 
     OBJETIVO: Aplicación de seguimiento de aciertos con estabilidad garantizada.
     - FILAS: Jugadores.
-    - COLUMNAS: Preguntas (etiquetadas A, B, C...).
+    - COLUMNAS: Preguntas (etiquetadas con su campo 'title').
     - INTERSECCIÓN: Checkboxes (aciertos/fallos).
+    - PERSISTENCIA DE ACIERTOS: La clave es PLAYER_ID-QUESTION_ID (UUID/ID estable), lo que garantiza la persistencia aunque las preguntas se reordenen.
     - PUNTUACIÓN: Se calcula sumando el número de palabras de la respuesta de cada pregunta acertada.
     - PERSISTENCIA: Los datos se guardan en el navegador (localStorage) para este ejemplo.
     -->
@@ -197,29 +198,25 @@
             return str.split(/\s+/).filter(word => word.length > 0).length;
         }
 
-        /**
-         * Genera un título de letra consecutiva a partir de un índice (0 -> 'A', 1 -> 'B', etc.).
-         */
-        function getQuestionTitle(index) {
-            return String.fromCharCode(65 + index); // 65 es el código ASCII para 'A'
-        }
-
         // --- Variables Globales y Estado ---
         
-        // La fuente de datos de las preguntas (ARRAY). El campo 'puntos' se calculará dinámicamente.
+        // La fuente de datos de las preguntas (ARRAY). El campo 'id' DEBE ser un UUID o un ID estable.
         let initialQuestionsData = [
             { 
-                id: generateUUID(), 
+                id: generateUUID(), // UUID para las preguntas reales
+                title: 'Mandamientos', 
                 enunciado: '¿Cuántos son los Mandamientos de la ley de Dios?', 
                 respuesta: 'Los Mandamientos de la Ley de Dios son diez', // 6 palabras = 6 puntos
             },
              { 
-                id: generateUUID(), 
+                id: generateUUID(), // UUID para las preguntas reales
+                title: 'Penitencia', 
                 enunciado: '¿Cuál es el sacramento de la penitencia?', 
                 respuesta: 'La confesión es el sacramento de la penitencia.' // 5 palabras = 5 puntos
             },
             {
-                id: generateUUID(), 
+                id: generateUUID(), // UUID para las preguntas reales
+                title: 'Pecado Original', 
                 enunciado: '¿Qué es el pecado original?', 
                 respuesta: 'El pecado original es aquel con el que nacemos todos' // 8 palabras = 8 puntos
             }
@@ -228,7 +225,7 @@
         // La lista completa de preguntas con los puntos y títulos calculados
         let questions = []; 
 
-        // La fuente de datos de los jugadores (OBJECT). Con IDs estables (UUID).
+        // La fuente de datos de los jugadores (OBJECT). Con IDs estables.
         let players = {
             'player-pepe': { id: 'player-pepe', name: 'Pepe Pérez', course: 'Curso A' },
             'player-juan': { id: 'player-juan', name: 'Juan Jimenez', course: 'Curso B' },
@@ -239,8 +236,6 @@
         let hitsState = {}; 
 
         // --- Persistencia (localStorage) ---
-        const QUESTIONS_KEY = 'memcat_questions';
-        const PLAYERS_KEY = 'memcat_players';
         const HITS_KEY = 'memcat_hits';
 
         function saveState() {
@@ -266,29 +261,29 @@
         }
         
         /**
-         * Inicializa la estructura de datos de las preguntas, garantizando 23 preguntas (A-W).
-         * Las primeras son datos reales, las restantes son de relleno (placeholder).
+         * Inicializa la estructura de datos de las preguntas, garantizando 23 preguntas.
+         * Todas las preguntas (reales y relleno) tienen ahora un ID estable/UUID.
          */
         function initializeData() {
-            // Número fijo de preguntas a generar (A-W = 23)
+            // Número fijo de preguntas a generar (23 para llenar la tabla)
             const maxQuestions = 23;
             questions = [];
             
-            // PUNTUACIÓN DE RELLENO POR DEFECTO (si no hay respuesta)
             const defaultPlaceholderPoints = 1; 
 
             for (let i = 0; i < maxQuestions; i++) {
                 const existingQuestion = initialQuestionsData[i];
                 let q = existingQuestion || {};
 
-                // Si no existe, creamos un placeholder
+                // Si no existe, creamos un placeholder con ID estable y título numérico.
                 if (!existingQuestion) {
-                     // Aseguramos un ID estable para el placeholder
-                     const placeholderId = 'placeholder-q-' + getQuestionTitle(i).toLowerCase(); 
+                     // ID estable para el placeholder basado en su índice
+                     const stablePlaceholderId = 'placeholder-q-' + (i + 1); 
                      
-                     q.enunciado = 'Pregunta de Relleno ' + getQuestionTitle(i) + ' (para rellenar la cuadrícula)';
-                     q.respuesta = 'Respuesta corta.'; // Respuesta corta para el placeholder
-                     q.id = placeholderId;
+                     q.id = stablePlaceholderId;
+                     q.title = 'Q-' + (i + 1);
+                     q.enunciado = 'Pregunta de Relleno ' + (i + 1);
+                     q.respuesta = 'Respuesta corta.';
                 } 
                 
                 // CALCULO CLAVE: Los puntos son el número de palabras en la respuesta.
@@ -297,7 +292,6 @@
                 // Generación de la estructura final
                 questions.push({
                     ...q,
-                    title: getQuestionTitle(i), // 'A', 'B', 'C', ... 'W'
                     puntos: calculatedPoints // Asignamos los puntos calculados
                 });
             }
@@ -324,6 +318,7 @@
          */
         function calculatePlayerScore(playerId) {
             // Filtra todos los IDs de aciertos que comienzan con el ID del jugador
+            // La clave de acierto YA usa el ID único/UUID de la pregunta.
             const playerHitIds = Object.keys(hitsState).filter(key => key.startsWith(playerId + '-'));
             let score = 0;
             
@@ -335,7 +330,7 @@
                     const questionId = getQuestionIdFromHitId(hitId, playerId); 
                     
                     if (questionId) {
-                        // Buscamos la pregunta por su ID para obtener sus puntos (puntos es ahora variable)
+                        // Buscamos la pregunta por su ID (UUID/ID estable) para obtener sus puntos
                         const question = questions.find(q => q.id === questionId);
 
                         // Si la pregunta existe y tiene puntos, los suma.
@@ -349,7 +344,7 @@
 
         // --- Renderizado y Lógica de Puntuación ---
 
-        const tableHead = document.querySelector('table tbody tr');
+        const tableHeadRow = document.querySelector('table thead tr');
         const tableBody = document.getElementById('player-grid');
         const playerModal = document.getElementById('player-modal');
         const questionModal = document.getElementById('question-modal');
@@ -371,23 +366,21 @@
         }
 
         /**
-         * Renderiza la cabecera de la tabla (Jugador | A | B | C...)
+         * Renderiza la cabecera de la tabla (Jugador | Título 1 | Título 2...)
          */
         function initializeAndRenderHeader() {
-            // Usamos tableHead, que ahora es el <tr> dentro de <thead>
-            const headerRow = document.querySelector('table thead tr');
-            headerRow.innerHTML = '';
+            tableHeadRow.innerHTML = '';
             
             // Primera columna: Jugador / Puntos (Sticky)
             let headerHTML = '<th class="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider sticky left-0 bg-gray-50">Jugador / Puntos</th>';
             
-            // Columnas de preguntas (A, B, C...)
+            // Columnas de preguntas (usando el campo 'title' de cada pregunta)
             questions.forEach(q => {
-                // Hacemos que la cabecera de la pregunta sea clickeable para ver detalles
+                // Usamos q.title para la cabecera
                 headerHTML += '<th data-question-id="' + q.id + '" class="px-3 py-3 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider cursor-pointer hover:bg-blue-100 transition duration-150 rounded-t-lg">' + q.title + '</th>';
             });
 
-            headerRow.innerHTML = headerHTML;
+            tableHeadRow.innerHTML = headerHTML;
         }
 
         /**
@@ -414,7 +407,8 @@
                 
                 // Celdas de checkboxes (seguimiento de aciertos)
                 questions.forEach(q => {
-                    const checkboxId = player.id + '-' + q.id;
+                    // CLAVE DE PERSISTENCIA: player.id - q.id (UUID o ID estable)
+                    const checkboxId = player.id + '-' + q.id; 
                     rowHTML += `<td class="p-3 sm:p-4 text-center"><input type="checkbox" id="${checkboxId}" data-player-id="${player.id}" data-question-id="${q.id}" class="form-checkbox text-green-500 focus:ring-2 focus:ring-green-400 rounded cursor-pointer" aria-label="${player.name}, pregunta ${q.title}"></td>`;
                 });
 
@@ -522,7 +516,7 @@
             tableBody.addEventListener('change', (event) => {
                 if (event.target.type === 'checkbox') {
                     const checkbox = event.target;
-                    // El ID del checkbox es playerId-questionId
+                    // El ID del checkbox (playerId-questionId/UUID) se usa como clave
                     hitsState[checkbox.id] = checkbox.checked; 
                     saveState(); // Guarda el estado en localStorage
                     
@@ -539,8 +533,8 @@
             });
 
             // 3. Escucha clics en la cabecera para ver detalles de la Pregunta
-            // Debemos usar el <thead> <tr> para delegar el evento
-            document.querySelector('table thead tr').addEventListener('click', (event) => {
+            // Delegamos el evento en la fila de la cabecera
+            tableHeadRow.addEventListener('click', (event) => {
                 const header = event.target.closest('th[data-question-id]');
                 if (header) showQuestionModal(header.dataset.questionId);
             });
